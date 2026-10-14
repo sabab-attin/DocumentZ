@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'continuous_pdf_layout.dart';
 import 'reader_pdf_conversion.dart';
 import 'annotation_color_picker.dart';
 import 'reading_typography.dart';
@@ -263,7 +266,7 @@ class _DocumentReaderState extends State<DocumentReader> {
         .clamp(1, viewer.pageCount);
     if (target == current) return;
     await pageTurn.currentState?.turn(direction, () {
-      if (_display == 'Dual page') {
+      if (_display == 'Dual page' || _display == 'Continuous') {
         _goPage(target);
         return;
       }
@@ -391,7 +394,19 @@ class _DocumentReaderState extends State<DocumentReader> {
     if (!delegate.hasSelectedText || !delegate.isCopyAllowed) return null;
     return SelectionPanel(
       readText: delegate.getSelectedText,
-      onClose: params.dismissContextMenu,
+      onClose: () {
+        params.dismissContextMenu();
+        unawaited(delegate.clearTextSelection());
+      },
+      onAnnotate: () {
+        if (!mounted) return;
+        setState(() {
+          _annotationMode = true;
+          tool = MarkTool.browse;
+        });
+        ReaderControlsScope.chromeOf(context)
+            ?.activity(autoHide: widget.preferences.autoHideControls);
+      },
       onMark: (kind, color) async {
         setState(() => _inkColor = color);
         await _markSelection(kind, delegate);
@@ -557,7 +572,7 @@ class _DocumentReaderState extends State<DocumentReader> {
                                           1;
                                       if (mark.anchor.startsWith('page:') &&
                                           viewer.isReady) {
-                                        viewer.goToPage(pageNumber: number);
+                                        _goPage(number);
                                       } else {
                                         epubReader.currentState
                                             ?.restoreBookmark(
@@ -820,7 +835,10 @@ class _DocumentReaderState extends State<DocumentReader> {
   void _goPage(int number) {
     if (!viewer.isReady) return;
     final page = number.clamp(1, viewer.pageCount);
-    if (_display == 'Dual page') {
+    if (_display == 'Continuous' && widget.preferences.viewingFit != 'custom') {
+      final matrix = viewer.calcMatrixFitWidthForPage(pageNumber: page);
+      if (matrix != null) viewer.value = viewer.makeMatrixInSafeRange(matrix);
+    } else if (_display == 'Dual page') {
       final first = ((page - 1) ~/ 2) * 2;
       final layouts = viewer.layout.pageLayouts;
       var rect = layouts[first];
@@ -870,6 +888,11 @@ class _DocumentReaderState extends State<DocumentReader> {
   String _shapeText = '';
 
   PdfPageLayout _layout(List<PdfPage> pages, PdfViewerParams params) {
+    if (_display == 'Continuous') {
+      return continuousPdfLayout(
+        pages.map((page) => Size(page.width, page.height)),
+      );
+    }
     final layouts = <Rect>[];
     final margin = params.margin;
     double width = 0, height = margin;
@@ -1010,7 +1033,9 @@ class _DocumentReaderState extends State<DocumentReader> {
     if (!viewer.isReady) return;
     final page = viewer.pageNumber ?? 1;
     final prefs = widget.preferences;
-    final matrix = prefs.viewingFit == 'fitWidth'
+    final matrix =
+        prefs.viewingFit == 'fitWidth' ||
+            (_display == 'Continuous' && prefs.viewingFit != 'custom')
         ? viewer.calcMatrixFitWidthForPage(pageNumber: page)
         : viewer.calcMatrixForRect(
             viewer.layout.pageLayouts[page - 1],
@@ -1042,12 +1067,7 @@ class _DocumentReaderState extends State<DocumentReader> {
       },
       onBestFit: () {
         widget.preferences.setViewing(fit: 'bestFit');
-        if (!viewer.isReady) return;
-        final matrix = viewer.calcMatrixForRect(
-          viewer.layout.pageLayouts[(viewer.pageNumber ?? 1) - 1],
-          margin: 0,
-        );
-        viewer.value = viewer.makeMatrixInSafeRange(matrix);
+        _applyViewing();
       },
       onFitWidth: () {
         widget.preferences.setViewing(fit: 'fitWidth');
@@ -1351,6 +1371,10 @@ class _DocumentReaderState extends State<DocumentReader> {
                 annotations: annotations,
                 activeTool: tool,
                 annotationMode: _annotationMode,
+                onAnnotate: () => setState(() {
+                  _annotationMode = true;
+                  tool = MarkTool.browse;
+                }),
                 insertText: _insertText,
                 insertImage: _insertImage,
                 onPlaced: _placed,
@@ -1386,6 +1410,34 @@ class _DocumentReaderState extends State<DocumentReader> {
       panEnabled: tool == MarkTool.browse && _display != 'Single page',
       scaleEnabled: tool == MarkTool.browse,
       layoutPages: _layout,
+      onViewSizeChanged: (size, oldSize, controller) {
+        if (_display != 'Continuous' ||
+            widget.preferences.viewingFit == 'custom' ||
+            oldSize == null ||
+            oldSize.width == size.width ||
+            !controller.isReady) {
+          return;
+        }
+        final center = controller.value.calcPosition(oldSize);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted ||
+              !identical(controller, viewer) ||
+              !controller.isReady ||
+              _display != 'Continuous' ||
+              widget.preferences.viewingFit == 'custom') {
+            return;
+          }
+          final width = controller.layout.documentSize.width;
+          if (width <= 0) return;
+          controller.value = controller.makeMatrixInSafeRange(
+            controller.calcMatrixFor(
+              center,
+              zoom: size.width / width,
+              viewSize: size,
+            ),
+          );
+        });
+      },
       textSelectionParams: PdfTextSelectionParams(
         enabled: tool == MarkTool.browse || (_textTool && !_markImages),
         showContextMenuAutomatically: tool == MarkTool.browse,

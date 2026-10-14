@@ -189,6 +189,7 @@ class AnnotatedParagraph extends StatefulWidget {
     required this.style,
     required this.onSelection,
     required this.onLink,
+    this.onAnnotate,
     this.color,
     this.activeTool = MarkTool.browse,
     this.searchQuery = '',
@@ -208,6 +209,7 @@ class AnnotatedParagraph extends StatefulWidget {
   final TextStyle style;
   final ValueChanged<Future<void> Function(MarkTool)> onSelection;
   final ValueChanged<String> onLink;
+  final VoidCallback? onAnnotate;
   @override
   State<AnnotatedParagraph> createState() => _AnnotatedParagraphState();
 }
@@ -470,7 +472,8 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                                   .textEditingValue
                                   .selection
                                   .textInside(editable.textEditingValue.text),
-                              onClose: editable.hideToolbar,
+                              onClose: () => closeReaderTextSelection(editable),
+                              onAnnotate: widget.onAnnotate,
                               onMark: (kind, color) =>
                                   annotate(kind, color: color),
                             ),

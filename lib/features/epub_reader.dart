@@ -37,11 +37,13 @@ class EpubReader extends StatefulWidget {
     this.insertText,
     this.insertImage,
     this.onPlaced,
+    this.onAnnotate,
   });
   final bool annotationMode;
   final TextAnnotationDraft? insertText;
   final String? insertImage;
   final VoidCallback? onPlaced;
+  final VoidCallback? onAnnotate;
   final MarkTool activeTool;
   final Future<EpubDocumentData>? parsedDocument;
   final int? color;
@@ -462,6 +464,7 @@ class EpubReaderState extends State<EpubReader> {
                                       store: widget.annotations,
                                       color: widget.color,
                                       activeTool: widget.activeTool,
+                                      onAnnotate: widget.onAnnotate,
                                       gestureSession: gestures,
                                       style: bodyStyle,
                                       textAlign: widget

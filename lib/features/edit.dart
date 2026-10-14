@@ -1,3 +1,5 @@
+import 'pdf_compression_screen.dart';
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -319,6 +321,22 @@ class _EditScreenState extends State<EditScreen> {
         }
         if (action == 'Merge' && selected.length < 2) {
           throw const FormatException('Choose at least two PDFs to merge.');
+        }
+        if (action == 'Compress PDF') {
+          final original = await selected.first.read();
+          if (!mounted) return;
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PdfCompressionScreen(
+                bytes: original,
+                title: selected.first.title,
+                repository: library,
+                onSaved: widget.onSaved,
+              ),
+            ),
+          );
+          return;
         }
         final bytes = await _readInput(selected.first);
         if (bytes == null || !mounted) return;
@@ -759,6 +777,7 @@ class _EditScreenState extends State<EditScreen> {
             'Content': Icons.edit_note,
             'Fill form': Icons.list_alt,
             'Export': Icons.ios_share,
+            'Compress PDF': Icons.compress,
           }),
           _group('Sign & protect', const {
             'Signature': Icons.gesture,

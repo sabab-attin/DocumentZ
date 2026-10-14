@@ -1,3 +1,7 @@
+import '../data/document_file_info.dart';
+import 'document_shelf.dart';
+import 'shelf_preferences.dart';
+import 'document_tile.dart';
 import '../data/library_changes.dart';
 import 'document_actions.dart';
 import '../data/recent_documents.dart';
@@ -40,10 +44,31 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
+  late final shelf = ShelfPreferences(
+    widget.recentOnly ? 'recent' : 'imported-library',
+    recent: widget.recentOnly,
+  );
+  Map<String, DocumentFileInfo> fileInfo = {};
+  Map<String, int> accessTimes = {};
+  void _shelfChanged() {
+    if (mounted) setState(() {});
+  }
+
+  ShelfOrderData _order(Book book) => ShelfOrderData(
+    id: book.id,
+    name: book.title,
+    type: book.format.name,
+    modified: fileInfo[book.id]?.modified,
+    size: fileInfo[book.id]?.size,
+    opened: accessTimes[book.id] ?? RecentDocuments.instance.accessed[book.id],
+    progress: ReadingProgress.instance.fraction(book.id),
+  );
+
   Future<List<Book>> _loadBooks() async {
     final all = await widget.repository.listBooks();
-    if (!widget.recentOnly) return all;
+    fileInfo = await documentFileInfo(all);
     await RecentDocuments.instance.load();
+    if (!widget.recentOnly) return all;
     final times = Map<String, int>.of(RecentDocuments.instance.accessed);
     for (final book in all) {
       if (!times.containsKey(book.id) &&
@@ -54,6 +79,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         }
       }
     }
+    accessTimes = times;
     return all.where((book) => times.containsKey(book.id)).toList()
       ..sort((a, b) => times[b.id]!.compareTo(times[a.id]!));
   }
@@ -79,12 +105,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     LibraryChanges.instance.addListener(_refresh);
+    shelf.addListener(_shelfChanged);
+    unawaited(shelf.load());
     unawaited(ReadingProgress.instance.load());
   }
 
   @override
   void dispose() {
     LibraryChanges.instance.removeListener(_refresh);
+    shelf.removeListener(_shelfChanged);
+    shelf.dispose();
     searchController.dispose();
     super.dispose();
   }
@@ -139,32 +169,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
       constraints: const BoxConstraints(maxWidth: 920),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
-          final available = (constraints.maxWidth - 32).clamp(
-            0.0,
-            double.infinity,
-          );
-          final columns = largeText || available < 300
-              ? 1
-              : available >= 760
-              ? 4
-              : available >= 540
-              ? 3
-              : 2;
-          final width = (available - (columns - 1) * 16) / columns;
           return CustomScrollView(
             key: const PageStorageKey('recent-document-scroll'),
             scrollCacheExtent: const ScrollCacheExtent.pixels(240),
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 32, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                 sliver: SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.recentOnly ? 'Recent' : 'Library',
-                        style: Theme.of(context).textTheme.headlineLarge,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.recentOnly ? 'Recent' : 'Library',
+                              style: Theme.of(context).textTheme.headlineMedium,
+                            ),
+                          ),
+                          ShelfViewControls(preferences: shelf),
+                        ],
                       ),
                       if (widget.repository is ImportableLibrary) ...[
                         const SizedBox(height: 20),
@@ -223,6 +247,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   final matches = snapshot.data!
                       .where((book) => book.title.toLowerCase().contains(query))
                       .toList();
+                  matches.sort((a, b) => shelf.compare(_order(a), _order(b)));
                   if (matches.isEmpty) {
                     return SliverToBoxAdapter(
                       child: Padding(
@@ -241,30 +266,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     listenable: ReadingProgress.instance,
                     builder: (context, _) => SliverPadding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, row) => Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                for (var col = 0; col < columns; col++) ...[
-                                  if (col > 0) const SizedBox(width: 16),
-                                  if (row * columns + col < matches.length)
-                                    SizedBox(
-                                      width: width,
-                                      child: _documentCard(
-                                        matches[row * columns + col],
-                                      ),
-                                    )
-                                  else
-                                    SizedBox(width: width),
-                                ],
-                              ],
-                            ),
-                          ),
-                          childCount: (matches.length + columns - 1) ~/ columns,
-                        ),
+                      sliver: DocumentShelfSliver<Book>(
+                        items: matches,
+                        preferences: shelf,
+                        width: constraints.maxWidth,
+                        typeOf: (book) => book.format.name,
+                        tileBuilder: _documentCard,
+                        rowBuilder: _documentRow,
                       ),
                     ),
                   );
@@ -337,83 +345,53 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  Widget _documentCard(Book book) => Card(
-    margin: EdgeInsets.zero,
-    elevation: 0,
-    color: Theme.of(context).colorScheme.surfaceContainerLow,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onLongPress: () => _actions(book),
-      onTap: () => Navigator.of(context)
-          .push(
-            MaterialPageRoute<void>(
-              builder: (_) => ReaderScreen(
-                book: book,
-                preferences: widget.preferences,
-                repository: widget.repository,
-              ),
+  Widget _documentRow(Book book) => ShelfDocumentRow(
+    key: ValueKey(book.id),
+    title: book.title,
+    format: book.format,
+    view: shelf.view,
+    progress: ReadingProgress.instance.fraction(book.id),
+    size: fileInfo[book.id]?.size,
+    modified: fileInfo[book.id]?.modified,
+    cover: shelf.view == ShelfView.tiles || shelf.view == ShelfView.content
+        ? _cover(book)
+        : null,
+    onOptions: widget.repository is ImportableLibrary
+        ? () => _actions(book)
+        : null,
+    onOpen: () => Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => ReaderScreen(
+              book: book,
+              preferences: widget.preferences,
+              repository: widget.repository,
             ),
-          )
-          .then((_) => _refresh()),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) => DocumentCover(
-                format: book.format,
-                width: constraints.maxWidth,
-                height: constraints.maxWidth * 1.35,
-                cover: _cover(book),
-              ),
+          ),
+        )
+        .then((_) => _refresh()),
+  );
+
+  Widget _documentCard(Book book, DocumentTileLayout layout) => DocumentTile(
+    key: ValueKey(book.id),
+    title: book.title,
+    format: book.format,
+    cover: _cover(book),
+    layout: layout,
+    progress: ReadingProgress.instance.fraction(book.id),
+    onOptions: widget.repository is ImportableLibrary
+        ? () => _actions(book)
+        : null,
+    onOpen: () => Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => ReaderScreen(
+              book: book,
+              preferences: widget.preferences,
+              repository: widget.repository,
             ),
-            const SizedBox(height: 12),
-            Text(
-              book.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    book.format.name.toUpperCase(),
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-                if (widget.repository is ImportableLibrary)
-                  IconButton(
-                    tooltip: 'Document options',
-                    icon: const Icon(Icons.more_vert, size: 20),
-                    onPressed: () => _actions(book),
-                  )
-                else
-                  const SizedBox(height: 48),
-              ],
-            ),
-            Text(
-              'Progress ${ReadingProgress.instance.percent(book.id)}%',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: ReadingProgress.instance.fraction(book.id),
-                minHeight: 4,
-              ),
-            ),
-            const SizedBox(height: 4),
-          ],
-        ),
-      ),
-    ),
+          ),
+        )
+        .then((_) => _refresh()),
   );
 }

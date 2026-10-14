@@ -593,6 +593,10 @@ class _FormatReaderState extends State<FormatReader> {
               color: color,
               activeTool: tool,
               annotationMode: _annotationMode,
+              onAnnotate: () => setState(() {
+                _annotationMode = true;
+                tool = MarkTool.browse;
+              }),
               insertText: _insertText,
               insertImage: _insertImage,
               onPlaced: _placed,

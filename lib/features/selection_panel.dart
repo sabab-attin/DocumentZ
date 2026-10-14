@@ -27,10 +27,12 @@ class SelectionPanel extends StatefulWidget {
     required this.readText,
     required this.onMark,
     required this.onClose,
+    this.onAnnotate,
   });
   final Future<String> Function() readText;
   final Future<void> Function(MarkTool, int) onMark;
   final VoidCallback onClose;
+  final VoidCallback? onAnnotate;
   @override
   State<SelectionPanel> createState() => _SelectionPanelState();
 }
@@ -313,11 +315,19 @@ class _SelectionPanelState extends State<SelectionPanel> {
                                   );
                                 },
                         ),
-                        _action(
-                          'Close',
-                          Icons.close,
-                          busy ? null : widget.onClose,
-                        ),
+                        if (widget.onAnnotate != null)
+                          _action(
+                            'Annotate',
+                            Icons.draw_outlined,
+                            busy
+                                ? null
+                                : () {
+                                    final annotate = widget.onAnnotate!;
+                                    widget.onClose();
+                                    annotate();
+                                  },
+                          ),
+                        _action('Close', Icons.close, widget.onClose),
                       ],
                     ),
                   ],
@@ -329,6 +339,21 @@ class _SelectionPanelState extends State<SelectionPanel> {
       ),
     ),
   );
+}
+
+/// Dismiss the selection itself so rebuilding cannot reopen its toolbar.
+void closeReaderTextSelection(EditableTextState editable) {
+  if (!editable.mounted) return;
+  final value = editable.textEditingValue;
+  final end = value.selection.isValid
+      ? value.selection.end.clamp(0, value.text.length)
+      : 0;
+  editable.userUpdateTextEditingValue(
+    value.copyWith(selection: TextSelection.collapsed(offset: end)),
+    SelectionChangedCause.toolbar,
+  );
+  editable.hideToolbar();
+  ContextMenuController.removeAny();
 }
 
 class ReaderMenuAction extends StatelessWidget {

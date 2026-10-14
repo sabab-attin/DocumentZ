@@ -101,47 +101,116 @@ class DocumentCover extends StatelessWidget {
   final Future<Uint8List?> cover;
   final BookFormat format;
   final double width, height;
+  IconData get _icon => switch (format.name) {
+    'pdf' => Icons.picture_as_pdf_outlined,
+    'epub' || 'mobi' => Icons.menu_book_outlined,
+    'xls' || 'xlsx' || 'ods' => Icons.table_chart_outlined,
+    'ppt' || 'pptx' || 'odp' => Icons.slideshow_outlined,
+    'png' ||
+    'jpg' ||
+    'jpeg' ||
+    'gif' ||
+    'bmp' ||
+    'svg' ||
+    'tif' ||
+    'tiff' => Icons.image_outlined,
+    _ => Icons.description_outlined,
+  };
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: width,
-    height: height,
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: ColoredBox(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: FutureBuilder<Uint8List?>(
-          future: cover,
-          builder: (context, snapshot) {
-            final fallback = Icon(
-              format == BookFormat.pdf
-                  ? Icons.picture_as_pdf_outlined
-                  : Icons.menu_book_outlined,
-            );
-            if (snapshot.data != null &&
-                utf8
-                    .decode(
-                      snapshot.data!.take(1024).toList(),
-                      allowMalformed: true,
-                    )
-                    .contains('<svg')) {
-              return SvgPicture.memory(
-                snapshot.data!,
-                fit: BoxFit.contain,
-                excludeFromSemantics: true,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final accent = format == BookFormat.epub
+        ? scheme.tertiary
+        : format == BookFormat.pdf
+        ? scheme.primary
+        : scheme.secondary;
+    Widget fallback() => Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  accent.withValues(alpha: .13),
+                  accent.withValues(alpha: .035),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 10,
+          top: 18,
+          bottom: 18,
+          child: Container(width: 2, color: accent.withValues(alpha: .22)),
+        ),
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _icon,
+                size: (height * .32).clamp(24.0, 44.0),
+                color: accent,
+              ),
+              if (height >= 150) ...[
+                const SizedBox(height: 12),
+                Text(
+                  format.name.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium
+                      ?.copyWith(color: accent, letterSpacing: 1.6),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+    return SizedBox(
+      width: width,
+      height: height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ColoredBox(
+          color: scheme.surfaceContainerHighest,
+          child: FutureBuilder<Uint8List?>(
+            future: cover,
+            builder: (context, snapshot) {
+              final bytes = snapshot.data;
+              if (bytes == null) return fallback();
+              final svg = utf8
+                  .decode(bytes.take(1024).toList(), allowMalformed: true)
+                  .contains('<svg');
+              return Padding(
+                padding: const EdgeInsets.all(10),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: svg
+                          ? SvgPicture.memory(
+                              bytes,
+                              fit: BoxFit.contain,
+                              excludeFromSemantics: true,
+                            )
+                          : Image.memory(
+                              bytes,
+                              fit: BoxFit.contain,
+                              cacheWidth: 384,
+                              excludeFromSemantics: true,
+                              errorBuilder: (_, error, stack) => fallback(),
+                            ),
+                    ),
+                  ],
+                ),
               );
-            }
-            return snapshot.data == null
-                ? Center(child: fallback)
-                : Image.memory(
-                    snapshot.data!,
-                    fit: BoxFit.contain,
-                    cacheWidth: 384,
-                    excludeFromSemantics: true,
-                    errorBuilder: (_, error, stack) => Center(child: fallback),
-                  );
-          },
+            },
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

@@ -15,8 +15,12 @@ import 'package:documentz/data/local_library_web.dart';
 // Native folder scans can complete only while the real event loop is running.
 // Keep checking readiness instead of skipping or extending a failed assertion.
 Future<void> settleApp(WidgetTester tester) async {
+  // Keep the real event loop available for native storage and font/image loading,
+  // including work started during a theme transition. Require a quiet frame,
+  // rather than leaving runAsync as soon as a loading indicator disappears.
   await tester.runAsync(() async {
     final deadline = DateTime.now().add(const Duration(seconds: 15));
+    var quietFrames = 0;
     while (true) {
       await tester.pump(const Duration(milliseconds: 16));
       final circular = find
@@ -33,14 +37,18 @@ Future<void> settleApp(WidgetTester tester) async {
             (element) =>
                 (element.widget as LinearProgressIndicator).value == null,
           );
-      if (!circular && !linear) break;
+      final animating = tester.binding.hasScheduledFrame;
+      quietFrames = !circular && !linear && !animating ? quietFrames + 1 : 0;
+      if (quietFrames >= 2) return;
       if (DateTime.now().isAfter(deadline)) {
-        throw TestFailure('The visible app screen did not finish loading.');
+        throw TestFailure(
+          'App did not become idle: circular loading=$circular, '
+          'linear loading=$linear, scheduled animation frame=$animating.',
+        );
       }
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
   });
-  await tester.pumpAndSettle();
 }
 
 void main() {

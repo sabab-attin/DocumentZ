@@ -1,3 +1,13 @@
+import '../data/document_file_info.dart';
+import 'document_shelf.dart';
+import 'shelf_preferences.dart';
+
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+
+import 'dart:async';
+
+import '../data/reading_progress.dart';
+import 'document_tile.dart';
 import '../data/library_changes.dart';
 import 'document_actions.dart';
 import '../data/recent_documents.dart';
@@ -44,6 +54,27 @@ class _LibraryItem {
 }
 
 class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
+  final shelf = ShelfPreferences('device-library');
+  Map<String, DocumentFileInfo> fileInfo = {};
+  void _shelfChanged() {
+    if (mounted) setState(() {});
+  }
+
+  ShelfOrderData _order(_LibraryItem item) => ShelfOrderData(
+    id: item.id,
+    name: item.name,
+    type: item.format.name,
+    size: item.device?.size ?? fileInfo[item.book?.id]?.size,
+    modified:
+        (item.device?.modified ?? fileInfo[item.book?.id]?.modified ?? 0) > 0
+        ? item.device?.modified ?? fileInfo[item.book?.id]?.modified
+        : null,
+    opened: RecentDocuments.instance.accessed[item.book?.id],
+    progress: item.book == null
+        ? 0
+        : ReadingProgress.instance.fraction(item.book!.id),
+  );
+
   List<_LibraryItem> items = [];
   List<String> folders = [], errors = [];
   final selected = <String>{};
@@ -80,7 +111,10 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
   void initState() {
     super.initState();
     LibraryChanges.instance.addListener(_refresh);
+    shelf.addListener(_shelfChanged);
+    unawaited(shelf.load());
     _refresh();
+    unawaited(ReadingProgress.instance.load());
   }
 
   @override
@@ -92,6 +126,8 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
   @override
   void dispose() {
     LibraryChanges.instance.removeListener(_refresh);
+    shelf.removeListener(_shelfChanged);
+    shelf.dispose();
     generation++;
     query.dispose();
     scroll.dispose();
@@ -112,6 +148,8 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
           .cast<String, String>();
       final books = await widget.repository.listBooks();
       final scan = await scanDeviceDocuments();
+      final metadata = await documentFileInfo(books);
+      await RecentDocuments.instance.load();
       final byId = {for (final book in books) book.id: book};
       final mapped = <String>{};
       final next = <_LibraryItem>[];
@@ -132,6 +170,7 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
           ..clear()
           ..addAll(mappings);
         items = next;
+        fileInfo = metadata;
         folders = scan.folders;
         errors = scan.errors;
         selected.removeWhere((id) => !items.any((item) => item.id == id));
@@ -421,6 +460,64 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
       ),
     ),
   );
+  void _tapItem(_LibraryItem item) {
+    if (busy) return;
+    if (selected.isNotEmpty) {
+      setState(() {
+        if (!selected.add(item.id)) {
+          selected.remove(item.id);
+        }
+      });
+    } else {
+      _open(item);
+    }
+  }
+
+  void _selectItem(_LibraryItem item, bool value) => setState(() {
+    if (value) {
+      selected.add(item.id);
+    } else {
+      selected.remove(item.id);
+    }
+  });
+  Widget _gridTile(_LibraryItem item, DocumentTileLayout layout) =>
+      DocumentTile(
+        key: ValueKey(item.id),
+        title: item.name,
+        format: item.format,
+        cover: _cover(item),
+        layout: layout,
+        progress: item.book == null
+            ? 0
+            : ReadingProgress.instance.fraction(item.book!.id),
+        selected: selected.contains(item.id),
+        selectable: true,
+        onOptions: busy ? null : () => _actions(item),
+        onSelected: busy ? null : (value) => _selectItem(item, value),
+        onOpen: busy ? null : () => _tapItem(item),
+      );
+  Widget _rowTile(_LibraryItem item) {
+    final metadata = _order(item);
+    return ShelfDocumentRow(
+      key: ValueKey(item.id),
+      title: item.name,
+      format: item.format,
+      view: shelf.view,
+      progress: metadata.progress ?? 0,
+      size: metadata.size,
+      modified: metadata.modified,
+      folder: item.device?.folder,
+      cover: shelf.view == ShelfView.tiles || shelf.view == ShelfView.content
+          ? _cover(item)
+          : null,
+      selected: selected.contains(item.id),
+      selectable: true,
+      onOptions: busy ? null : () => _actions(item),
+      onSelected: busy ? null : (value) => _selectItem(item, value),
+      onOpen: busy ? null : () => _tapItem(item),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = query.text.trim().toLowerCase();
@@ -431,212 +528,141 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
               item.format.name.contains(text),
         )
         .toList();
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    matches.sort((a, b) => shelf.compare(_order(a), _order(b)));
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 920),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Library',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Connected folders',
-                    onPressed: folders.isEmpty ? null : _folders,
-                    icon: const Icon(Icons.folder_copy_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Refresh documents',
-                    onPressed: loading || busy ? null : _refresh,
-                    icon: const Icon(Icons.refresh),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: query,
-                      decoration: const InputDecoration(
-                        hintText: 'Search documents',
-                        prefixIcon: Icon(Icons.search),
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    tooltip: 'Add folder',
-                    onPressed: busy || loading ? null : _addFolder,
-                    icon: const Icon(Icons.create_new_folder_outlined),
-                  ),
-                ],
-              ),
-              if (selected.isNotEmpty)
-                Row(
-                  children: [
-                    Text('${selected.length} selected'),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => setState(selected.clear),
-                      child: const Text('Clear'),
-                    ),
-                    FilledButton.icon(
-                      onPressed: busy ? null : _edit,
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Edit'),
-                    ),
-                  ],
-                ),
-              if (errors.isNotEmpty)
-                Text(
-                  'Some folders could not be read. Reconnect them to restore access.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-            ],
-          ),
-        ),
-        if (loading || busy) const LinearProgressIndicator(),
-        Expanded(
-          child: failure != null
-              ? Center(child: Text(failure!))
-              : matches.isEmpty && !loading
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          text.isEmpty
-                              ? 'Add folders to find documents on this device.'
-                              : 'No documents found.',
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Library',
+                          style: Theme.of(context).textTheme.headlineMedium,
                         ),
-                        if (text.isEmpty)
-                          TextButton.icon(
-                            onPressed: _addFolder,
-                            icon: const Icon(Icons.folder_open),
-                            label: const Text('Add folder'),
+                      ),
+                      ShelfViewControls(preferences: shelf),
+                      IconButton(
+                        tooltip: 'Connected folders',
+                        onPressed: folders.isEmpty ? null : _folders,
+                        icon: const Icon(Icons.folder_copy_outlined),
+                      ),
+                      IconButton(
+                        tooltip: 'Refresh documents',
+                        onPressed: loading || busy ? null : _refresh,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: query,
+                          decoration: const InputDecoration(
+                            hintText: 'Search documents',
+                            prefixIcon: Icon(Icons.search),
+                            border: OutlineInputBorder(),
                           ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        tooltip: 'Add folder',
+                        onPressed: busy || loading ? null : _addFolder,
+                        icon: const Icon(Icons.create_new_folder_outlined),
+                      ),
+                    ],
+                  ),
+                  if (selected.isNotEmpty)
+                    Row(
+                      children: [
+                        Text('${selected.length} selected'),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () => setState(selected.clear),
+                          child: const Text('Clear'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: busy ? null : _edit,
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Edit'),
+                        ),
                       ],
                     ),
-                  ),
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final columns =
-                        MediaQuery.textScalerOf(context).scale(14) > 21
-                        ? 1
-                        : (constraints.maxWidth / 180).floor().clamp(1, 5);
-                    return GridView.builder(
-                      controller: scroll,
-                      padding: const EdgeInsets.all(16),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        mainAxisExtent: 304,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      ),
-                      itemCount: matches.length,
-                      itemBuilder: (context, index) {
-                        final item = matches[index];
-                        return Card(
-                          clipBehavior: Clip.antiAlias,
-                          child: InkWell(
-                            onTap: busy
-                                ? null
-                                : () {
-                                    if (selected.isNotEmpty) {
-                                      setState(() {
-                                        if (!selected.add(item.id)) {
-                                          selected.remove(item.id);
-                                        }
-                                      });
-                                    } else {
-                                      _open(item);
-                                    }
-                                  },
-                            onLongPress: busy ? null : () => _actions(item),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Stack(
-                                      children: [
-                                        Positioned.fill(
-                                          child: DocumentCover(
-                                            format: item.format,
-                                            width: double.infinity,
-                                            height: 220,
-                                            cover: _cover(item),
-                                          ),
-                                        ),
-                                        Positioned(
-                                          top: 0,
-                                          right: 40,
-                                          child: IconButton(
-                                            tooltip: 'Document options',
-                                            icon: const Icon(Icons.more_vert),
-                                            onPressed: busy
-                                                ? null
-                                                : () => _actions(item),
-                                          ),
-                                        ),
-                                        Positioned(
-                                          top: 0,
-                                          right: 0,
-                                          child: Checkbox(
-                                            value: selected.contains(item.id),
-                                            onChanged: busy
-                                                ? null
-                                                : (value) => setState(() {
-                                                    if (value == true) {
-                                                      selected.add(item.id);
-                                                    } else {
-                                                      selected.remove(item.id);
-                                                    }
-                                                  }),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    item.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall,
-                                  ),
-                                  Text(
-                                    item.format.name.toUpperCase(),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall,
-                                  ),
-                                ],
-                              ),
+                  if (errors.isNotEmpty)
+                    Text(
+                      'Some folders could not be read. Reconnect them to restore access.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+            if (loading || busy) const LinearProgressIndicator(),
+            Expanded(
+              child: failure != null
+                  ? Center(child: Text(failure!))
+                  : matches.isEmpty && !loading
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              text.isEmpty
+                                  ? 'Add folders to find documents on this device.'
+                                  : 'No documents found.',
                             ),
+                            if (text.isEmpty)
+                              TextButton.icon(
+                                onPressed: _addFolder,
+                                icon: const Icon(Icons.folder_open),
+                                label: const Text('Add folder'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        return ListenableBuilder(
+                          listenable: ReadingProgress.instance,
+                          builder: (context, _) => CustomScrollView(
+                            controller: scroll,
+                            scrollCacheExtent: const ScrollCacheExtent.pixels(
+                              240,
+                            ),
+                            slivers: [
+                              SliverPadding(
+                                padding: const EdgeInsets.all(16),
+                                sliver: DocumentShelfSliver<_LibraryItem>(
+                                  items: matches,
+                                  preferences: shelf,
+                                  width: constraints.maxWidth,
+                                  typeOf: (item) => item.format.name,
+                                  selectionEnabled: true,
+                                  tileBuilder: _gridTile,
+                                  rowBuilder: _rowTile,
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

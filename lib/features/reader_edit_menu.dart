@@ -106,6 +106,7 @@ class ReaderEditMenu extends StatelessWidget {
         'Content': Icons.edit_note,
         'Fill form': Icons.list_alt,
         'Export': Icons.ios_share,
+        'Compress PDF': Icons.compress,
       }),
       _group(context, 'Sign & protect', const {
         'Signature': Icons.gesture,
