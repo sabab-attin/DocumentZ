@@ -1,153 +1,179 @@
 # DocumentZ
 
-A Flutter document reader and PDF editor for Android and Windows.
+**Read, organize, annotate, and edit your documents.**
 
-DocumentZ brings a personal document library, configurable reading views, annotation tools, and PDF utilities into one application. Documents are imported locally, and editing operations save new copies so original files remain available.
+DocumentZ is a Flutter document reader and PDF editor for Android and Windows. Browse local documents, return to recent files, customize your reading view, and work with PDFs in one app.
+
+## Download v1.0.0
+
+The first release is available for **Android**.
+
+| Download | Choose this for |
+| --- | --- |
+| [Newer Android phones — ARM64 (v8a)](https://github.com/sabab-attin/DocumentZ/releases/download/v1.0.0/app-arm64-v8a-release.apk) | Most modern Android phones and tablets, including the Google Pixel 6a |
+| [Older Android phones — ARM32 (v7a)](https://github.com/sabab-attin/DocumentZ/releases/download/v1.0.0/app-armeabi-v7a-release.apk) | Devices that require 32-bit ARM apps |
+| [Android x86_64 — Intel/AMD](https://github.com/sabab-attin/DocumentZ/releases/download/v1.0.0/app-x86_64-release.apk) | Android devices and emulators using x86_64 processors |
+
+Choose by **processor architecture**, not just the phone's age. All three downloads are Android APKs. The x86_64 APK is **not a Windows installer**.
+
+[View release notes and all downloads](https://github.com/sabab-attin/DocumentZ/releases/tag/v1.0.0)
+
+### Install on Android
+
+1. Download the APK matching your device.
+2. Open it from your browser, Downloads folder, or file manager.
+3. If prompted, allow **Install unknown apps** for the app opening the APK.
+4. Install and launch DocumentZ.
+5. Grant storage or folder access when prompted to browse local documents.
+
+Android 7.0 / API 24 is the project's configured minimum; dependency and device requirements can impose additional limits. File access depends on your permissions and Android's storage restrictions.
+
+Updates must use the same application ID and signing certificate as the installed app. If an update reports a signature conflict, preserve your existing installation and export important documents and notes before considering removal.
+
+### Windows
+
+The project includes a Windows desktop target, but **no Windows download is included in the v1.0.0 assets linked above**. Developers can build it from source using the instructions below.
 
 ## Features
 
-### Read and organize
+### Your documents, organized
 
-- Import documents from local storage and supported file-picker providers.
-- Browse a searchable library with PDF first-page previews and EPUB covers.
-- Navigate PDFs using outlines, bookmarks, thumbnails, page jumps, and keyword search.
+- **Recent:** return to recently accessed documents and see reading progress.
+- **Library:** search imported documents and device files available through granted storage or folder access.
+- Choose different cover sizes and list-style views, with sorting controls.
+- Open file actions through the three-dot menu or a long press: share, rename, delete, and remove from Recent where applicable.
+- Select multiple documents for supported editing operations.
+
+### Read your way
+
 - Read PDFs in continuous, single-page, or two-page views.
-- Read reflowable EPUB chapters with a collapsible table of contents and adjustable typography.
-- Choose Light, Dark, Solarized Dark, or Kawaii appearance, with independent page dark mode.
-- Apply left, right, centered, or justified alignment in supported flowing-text readers.
-- Hide reader controls for an unobstructed reading view. Page-turn effects respect reduced-motion settings.
+- Use document search and match navigation, contents, bookmarks, thumbnails, and page jumps.
+- Adjust fit and zoom, enable page buttons, and use full-screen reading.
+- Change fonts, text size, and alignment in formats that support reflowable text.
+- Set global reading defaults or customize an individual document.
+- Choose Light, Dark, Solarized Dark, or Kawaii appearance, with separate page dark-mode controls.
+- Switch between Classic, Kawaii, and Medieval app icons, with themed icons on compatible Android launchers.
 
-### Annotate
+### Annotate and take notes
 
-- Highlight, underline, strike through text, and add notes.
-- Draw with selectable colors and stroke sizes, erase strokes, and undo changes.
-- Add arrows, rectangles, callouts, and drawn signatures.
-- Annotate immediately with a finger or stylus; use two fingers to navigate while a tool is active.
-- Keep annotations and bookmarks locally between sessions.
+- Highlight, underline, and strike through selected text.
+- Choose preset colors, including black, or pick a custom color.
+- Attach notes to text and add page notes with image attachments.
+- Enter annotation mode from reader editing controls or the text-selection panel.
+- Draw, erase, undo, and add shapes, arrows, callouts, or drawn signatures.
+- Place text and images on pages, then finish placement with **Done**.
+- Keep bookmarks and annotations locally between sessions.
 
-### Work with PDFs
+### PDF tools
 
-- Merge, split, extract, reorder, remove, and rotate pages using previews.
-- Add text and images, or visually replace a selected page area.
-- Fill supported AcroForm fields and stamp drawn signatures.
-- Digitally sign documents using a supplied PFX/P12 certificate.
-- Encrypt PDFs and redact selected regions.
-- Create text PDFs, scan documents, and perform on-device Latin-script OCR on Android.
-- Export extracted text to DOCX or XLSX, or export PDF pages as PNG images.
-- Preview, print, and share documents through supported system integrations.
+- Merge, split, extract, reorder, delete, and rotate pages.
+- Create printable booklets with an interactive sheet preview.
+- Compress PDFs and preview the result before saving a separate copy.
+- Encrypt PDFs, redact regions, fill supported forms, and add signatures.
+- Add text and images or visually replace a selected page area.
+- Create text PDFs and convert supported formats to PDF.
+- Scan documents and recognize Latin-script text on Android using on-device OCR.
+- Export extracted text to DOCX or XLSX, or PDF pages as PNG images.
+- Preview, print, and share through supported system integrations.
+
+Availability varies by document format and platform.
 
 ## Supported formats
 
 | Category | Formats | Reading approach |
 | --- | --- | --- |
-| Documents | PDF, EPUB | PDF pages or reflowable EPUB chapters |
-| Text and saved web pages | TXT, Markdown, RTF, HTML/HTM, MHTML/MHT | Text or simplified HTML views |
+| Documents | PDF, EPUB | Fixed PDF pages or reflowable EPUB chapters |
+| Text and saved web pages | TXT, Markdown, RTF, HTML/HTM, MHTML/MHT | Text or simplified HTML |
 | Office and OpenDocument | DOCX, XLSX, PPTX, ODT, ODS, ODP | Readable content, sheets, or slide sections |
-| Images | PNG, JPG/JPEG, BMP, GIF, TIFF/TIF, SVG | Image views; multi-page TIFF navigation |
-| Formats requiring conversion | DOC, XLS, PPT, MOBI, PS, EPS | Local Windows conversion to PDF |
+| Images | PNG, JPG/JPEG, BMP, GIF, TIFF/TIF, SVG | Image views; navigation for multi-page TIFF |
+| Formats requiring external conversion | DOC, XLS, PPT, MOBI, PS, EPS | Local conversion on Windows using separately installed tools |
 
-Direct Office views prioritize readable content over exact page layout. Legacy conversion requires separately installed LibreOffice, Calibre, or Ghostscript. Converted PDFs can be shared to Android.
+Office and EPUB views prioritize readable content; they do not reproduce every detail of the original layout. Legacy conversion requires tools such as LibreOffice, Calibre, or Ghostscript. See [FORMATS.md](FORMATS.md) for setup and format-specific limits.
 
-See [FORMATS.md](FORMATS.md) for conversion setup, rendering details, and format-specific limits.
+## Storage and privacy
 
-## Install on Android
+Documents, preferences, bookmarks, and annotations are stored locally. Reading does not require a DocumentZ account. Windows conversion runs locally, and Android OCR processes text on the device.
 
-When a release APK is available, download it from this repository's **Releases** page, open it on your device, and follow Android's installation prompts. Android may require permission to install apps from the browser or file manager used to open the APK.
+Imported documents are copied into application storage. Device-library operations can also affect the original file: read the confirmation before deleting. Clearing app data or uninstalling can remove stored copies and annotations.
 
-DocumentZ currently requires Android 7.0 / API 24 or later. Once installed, the application runs independently of a development computer.
+Sharing sends the chosen document through the application or provider you select. System file pickers may offer cloud providers with their own privacy policies. Google ML Kit remains an OCR dependency; this README does not claim that third-party SDKs collect no diagnostic data.
 
-To update an existing installation, install a newer APK with the same application ID and signing certificate. Back up important documents before uninstalling or clearing application data.
+## Important document limits
 
-## Development
+- **Annotations are app overlays.** Sharing the original does not embed its DocumentZ marks, notes, or placed objects. Generated copies do not automatically inherit those overlays.
+- **Compression depends on the document.** Preserve-content optimization may produce no size reduction. Image-copy modes reduce detail and discard selectable text, interactive forms, links, embedded notes, and bookmarks; explicit consent is required. Protected and signed PDFs are refused, and originals are kept unchanged.
+- **Redaction flattens pages.** Output becomes images, discarding searchable text, forms, links, metadata, and existing digital signatures. Review the result before sharing.
+- **Some PDF edits simplify content.** Area replacement rasterizes the affected page. Merge and split do not retain all interactive forms, outlines, or links.
+- **Text exports simplify layouts.** They do not reconstruct every table, column, image, or font. Scanned pages require OCR first.
+- **Forms and signatures have limits.** XFA forms, JavaScript calculations, and certificate-chain validation are not implemented. Editing can invalidate existing signatures.
+- **DRM-protected books are unsupported.** Full EPUB styling and original Office page geometry are not guaranteed.
+- Imports are limited to 100 MB, with additional archive and image limits in [FORMATS.md](FORMATS.md).
+
+## Build from source
 
 ### Requirements
 
-- Flutter with a Dart SDK satisfying `^3.13.5`, as declared in `pubspec.yaml`.
-- Android development tools and a compatible JDK for Android builds.
-- Visual Studio's **Desktop development with C++** workload and Windows Developer Mode for Windows builds.
-- A connected Android device, emulator, or Windows desktop target.
+- Flutter with a Dart SDK matching the constraint in [pubspec.yaml](pubspec.yaml).
+- Android SDK tools and a compatible JDK for Android.
+- Visual Studio with **Desktop development with C++**, plus Windows Developer Mode, for Windows.
 
-From the repository root:
+### Check and run
 
-```sh
+~~~sh
 flutter pub get
 flutter analyze
 flutter test --concurrency=1
 flutter devices
 flutter run -d <device-id>
-```
+~~~
 
 For Windows:
 
-```sh
+~~~sh
 flutter run -d windows
-```
+~~~
 
-New native plugins require a full application restart. Hot reload alone cannot register them.
+Native plugin changes require a full restart. Test platform-dependent features on real devices before distributing a build.
 
-### Build for distribution
+### Build Android APKs
 
-```sh
+~~~sh
+flutter build apk --release --split-per-abi
+~~~
+
+The APKs are written to **build/app/outputs/flutter-apk/**.
+
+For one larger APK containing the supported architectures:
+
+~~~sh
 flutter build apk --release
-```
+~~~
 
-The Android APK is written to `build/app/outputs/flutter-apk/app-release.apk`.
+Configure and retain a dedicated release signing key for public updates. The checked-in Android build configuration currently references debug signing. Keep keystores, passwords, local configuration, and diagnostic symbols out of version control. Increase the version and build number for each release.
 
-The current Android configuration uses the development signing key for release builds. Configure a dedicated release signing key before public distribution and retain it securely for future updates. Increase the version and build number in `pubspec.yaml` for each release. Signing credentials and keystores must remain outside version control.
+### Build Windows
 
-For Windows:
-
-```sh
+~~~sh
 flutter build windows --release
-```
+~~~
 
-Distribute the complete Windows release directory, including its supporting libraries and data files.
-
-## Storage and privacy
-
-On Android and Windows, imported documents are copied into application storage. Reading does not require a DocumentZ account or a cloud conversion service. Conversion tools run locally on Windows, and OCR runs on-device on Android.
-
-Preferences, bookmarks, and annotations are stored locally. Browser previews use a session-only document library and provide a reduced feature set. Uninstalling the application or clearing its data may remove the library and annotations.
-
-Sharing explicitly sends the selected document through the chosen system application or provider. File-picker providers may include external cloud services.
-
-## Current limitations
-
-- **Annotations are application overlays.** Sharing an original document does not embed its marks. Edited copies do not inherit the original's overlays.
-- **PDF content correction is visual.** It does not provide full paragraph reflow, exact embedded-font matching, or object-level image editing. Area replacement rasterizes the affected page.
-- **Redaction flattens the output.** All pages become images at 144 DPI; searchable text, forms, links, metadata, and existing digital signatures are discarded. Review the result before sharing.
-- **Merge and split preserve page artwork and text**, but do not preserve interactive forms, outlines, or links.
-- **Text exports simplify content.** DOCX and XLSX exports do not reconstruct original tables, columns, images, or typography. Scans need OCR before text export.
-- **EPUB and Office fidelity is limited.** Complete publisher CSS, exact fixed-layout EPUB reproduction, and original Office page geometry are not guaranteed. DRM-protected books are unsupported.
-- **Forms and signatures have boundaries.** XFA forms, JavaScript calculations, and certificate-chain validation are not implemented. Editing can invalidate existing signatures.
-- **Page dark mode preserves image colors.** Image-only PDFs retain their original appearance; browser PDF previews retain original page colors.
-- Imports are limited to 100 MB, with additional archive and image-decoding limits documented in [FORMATS.md](FORMATS.md).
-- SQLite storage, Supabase synchronization, and retrieval-augmented search are planned rather than implemented.
-
-## Project structure
-
-```text
-lib/
-  core/       Themes and reader preferences
-  domain/     Document models and service interfaces
-  data/       Import, storage, parsing, conversion, and PDF operations
-  features/   Library, readers, annotations, settings, and editing flows
-test/         Unit, widget, and native PDF regression tests
-android/      Android application configuration
-windows/      Windows application configuration
-web/          Browser preview configuration
-```
-
-Tests cover document imports, persistence, format parsing, annotation geometry, reader interactions, preferences, PDF editing, forms, and page-color rendering. Run the full suite before releasing. Physical-device checks remain important for scanning, OCR, signing, printing, sharing, gestures, and animation performance.
+Distribute the complete generated Windows release directory, including its supporting libraries and data files. An Android APK cannot serve as the Windows package.
 
 ## Dependencies and licensing
 
-DocumentZ uses Flutter and third-party packages including pdfrx/PDFium, Syncfusion Flutter PDF, pdf, printing, flutter_widget_from_html_core, flutter_svg, Google ML Kit text recognition, cunning_document_scanner, signature, and share_plus. The complete dependency list and resolved versions are recorded in `pubspec.yaml` and `pubspec.lock`.
+Dependencies and resolved versions are listed in [pubspec.yaml](pubspec.yaml) and [pubspec.lock](pubspec.lock). They include Flutter, pdfrx/PDFium, Syncfusion Flutter PDF, Google ML Kit, and document rendering and sharing packages.
 
-Syncfusion Flutter PDF requires a commercial license or eligibility for its Community License. Review the [package's licensing information](https://pub.dev/packages/syncfusion_flutter_pdf) before distributing the application. Preserve applicable third-party license notices, including those required by bundled native components and external conversion tools.
+Review the licenses for bundled libraries and fonts, including [FONT_NOTICE.md](FONT_NOTICE.md). Syncfusion Flutter PDF has its own licensing requirements.
 
-No project-level open-source license has been selected yet. Public source availability alone does not grant permission to redistribute or modify the project; add an appropriate `LICENSE` before presenting DocumentZ as an open-source release.
+A project-level **LICENSE** file has not yet been added. Do not assume an open-source license from the repository's public visibility.
 
-## Reporting issues
+## Feedback and bug reports
 
-Include the application version, device and operating system, document format, steps to reproduce, and expected behavior. Attach a small, non-sensitive sample document when the issue depends on a particular file. Remove personal information, passwords, and signing credentials from reports.
+[Open an issue](https://github.com/sabab-attin/DocumentZ/issues) with:
+
+- DocumentZ version and device or operating system.
+- Document format and steps to reproduce the problem.
+- Expected behavior and what happened.
+- A small, non-sensitive sample document or screenshot when useful.
+
+Remove personal information, document passwords, and signing credentials from reports.
