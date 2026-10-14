@@ -64,3 +64,15 @@ app.*.map.json
 # Distribute installers through GitHub Releases
 *.apk
 *.aab
+
+# Debug symbol build output
+/symbols/
+
+# Private documentation and accidental files
+/VERIFICATION.md
+/sentry*.json
+/outputs/
+/Backup-*/
+/*.ps1
+/h -u origin main
+/ource release*

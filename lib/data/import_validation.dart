@@ -1,17 +1,71 @@
 import '../domain/book.dart';
 
 const maxImportBytes = 100 * 1024 * 1024;
-const officeArchiveFormats = {BookFormat.docx, BookFormat.xlsx, BookFormat.pptx, BookFormat.odt, BookFormat.ods, BookFormat.odp};
-const rasterFormats = {BookFormat.png, BookFormat.jpg, BookFormat.jpeg, BookFormat.tiff, BookFormat.tif, BookFormat.bmp, BookFormat.gif};
-const conversionFormats = {BookFormat.doc, BookFormat.xls, BookFormat.ppt, BookFormat.mobi, BookFormat.eps, BookFormat.ps};
-const documentExtensions = ['pdf', 'epub', 'txt', 'md', 'markdown', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt',
-  'odt', 'ods', 'odp', 'rtf', 'html', 'htm', 'mhtml', 'mht', 'mobi', 'png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp', 'gif', 'svg', 'eps', 'ps'];
+const officeArchiveFormats = {
+  BookFormat.docx,
+  BookFormat.xlsx,
+  BookFormat.pptx,
+  BookFormat.odt,
+  BookFormat.ods,
+  BookFormat.odp,
+};
+const rasterFormats = {
+  BookFormat.png,
+  BookFormat.jpg,
+  BookFormat.jpeg,
+  BookFormat.tiff,
+  BookFormat.tif,
+  BookFormat.bmp,
+  BookFormat.gif,
+};
+const conversionFormats = {
+  BookFormat.doc,
+  BookFormat.xls,
+  BookFormat.ppt,
+  BookFormat.mobi,
+  BookFormat.eps,
+  BookFormat.ps,
+};
+const documentExtensions = [
+  'pdf',
+  'epub',
+  'txt',
+  'md',
+  'markdown',
+  'docx',
+  'doc',
+  'xlsx',
+  'xls',
+  'pptx',
+  'ppt',
+  'odt',
+  'ods',
+  'odp',
+  'rtf',
+  'html',
+  'htm',
+  'mhtml',
+  'mht',
+  'mobi',
+  'png',
+  'jpg',
+  'jpeg',
+  'tiff',
+  'tif',
+  'bmp',
+  'gif',
+  'svg',
+  'eps',
+  'ps',
+];
 
 BookFormat importFormat(String name) {
   final extension = name.split('.').last.toLowerCase();
   if (extension == 'md') return BookFormat.markdown;
   if (extension == 'mht') return BookFormat.mhtml;
-  for (final format in BookFormat.values) { if (format.name == extension) return format; }
+  for (final format in BookFormat.values) {
+    if (format.name == extension) return format;
+  }
   throw const FormatException('This document format is not supported.');
 }
 
@@ -21,14 +75,28 @@ void validateDocumentHeader(BookFormat format, List<int> header, int length) {
     if (!String.fromCharCodes(header).contains('%PDF-')) {
       throw const FormatException('This file does not appear to be a PDF.');
     }
-  } else if (format == BookFormat.epub || officeArchiveFormats.contains(format)) {
-    if (header.length < 4 || header[0] != 0x50 || header[1] != 0x4b || header[2] != 3 || header[3] != 4) {
-      throw FormatException('This file does not appear to be a ${format.name.toUpperCase()} archive. Encrypted Office files must be unlocked first.');
+  } else if (format == BookFormat.epub ||
+      officeArchiveFormats.contains(format)) {
+    if (header.length < 4 ||
+        header[0] != 0x50 ||
+        header[1] != 0x4b ||
+        header[2] != 3 ||
+        header[3] != 4) {
+      throw FormatException(
+        'This file does not appear to be a ${format.name.toUpperCase()} archive. Encrypted Office files must be unlocked first.',
+      );
     }
-  } else if ({BookFormat.doc, BookFormat.xls, BookFormat.ppt}.contains(format)) {
+  } else if ({
+    BookFormat.doc,
+    BookFormat.xls,
+    BookFormat.ppt,
+  }.contains(format)) {
     const signature = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
-    if (header.length < 8 || List.generate(8, (i) => header[i] == signature[i]).contains(false)) {
-      throw const FormatException('This file does not appear to be a legacy Office document.');
+    if (header.length < 8 ||
+        List.generate(8, (i) => header[i] == signature[i]).contains(false)) {
+      throw const FormatException(
+        'This file does not appear to be a legacy Office document.',
+      );
     }
   }
 }

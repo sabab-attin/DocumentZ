@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:documentz/data/app_storage_io.dart';
 
@@ -9,7 +10,9 @@ void main() {
     final old = await Directory('${root.path}/quiet_reader').create();
     final current = Directory('${root.path}/DocumentZ');
     final source = File('${old.path}/shared_preferences.json');
-    await source.writeAsString('{"theme":"dark","annotations.v1.book":"saved"}');
+    await source.writeAsString(
+      '{"theme":"dark","annotations.v1.book":"saved"}',
+    );
     await copyLegacyPreferences(old, current);
     final destination = File('${current.path}/shared_preferences.json');
     expect(await destination.readAsString(), await source.readAsString());

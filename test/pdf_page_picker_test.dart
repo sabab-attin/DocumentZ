@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -13,9 +14,12 @@ class _PreviewPage implements PdfPage {
   @override
   double get height => 800;
   @override
-  dynamic noSuchMethod(Invocation invocation) => invocation.memberName == #render
-    ? Future<PdfImage?>.value(null) : super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) =>
+      invocation.memberName == #render
+      ? Future<PdfImage?>.value(null)
+      : super.noSuchMethod(invocation);
 }
+
 class _PreviewDocument extends PdfDocument {
   _PreviewDocument(int count) : super(sourceName: 'preview-test') {
     pages = List.generate(count, (i) => _PreviewPage(i + 1));
@@ -29,30 +33,74 @@ class _PreviewDocument extends PdfDocument {
 }
 
 void main() {
-  testWidgets('page picker previews all pages, jumps to typed page, and returns that page', (tester) async {
+  testWidgets(
+    'page picker previews all pages, jumps to typed page, and returns that page',
+    (tester) async {
+      List<int>? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  result = await Navigator.push<List<int>>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PdfPagePicker(
+                        bytes: Uint8List(0),
+                        title: 'Choose page',
+                        documentLoader: () async => _PreviewDocument(400),
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.text('Page 1'), findsOneWidget);
+      expect(find.text(' / 400'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '300');
+      await tester.tap(find.byTooltip('Jump to page'));
+      await tester.pumpAndSettle();
+      expect(find.text('Use page 300'), findsOneWidget);
+      await tester.tap(find.text('Use page 300'));
+      await tester.pumpAndSettle();
+      expect(result, [299]);
+    },
+  );
+  testWidgets('rotation page picker supports selecting several thumbnails', (
+    tester,
+  ) async {
     List<int>? result;
-    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => Scaffold(body: TextButton(
-      onPressed: () async { result = await Navigator.push<List<int>>(context, MaterialPageRoute(builder: (_) => PdfPagePicker(
-        bytes: Uint8List(0), title: 'Choose page', documentLoader: () async => _PreviewDocument(400)))); },
-      child: const Text('Open'))))));
-    await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
-    expect(find.text('Page 1'), findsOneWidget);
-    expect(find.text(' / 400'), findsOneWidget);
-    await tester.enterText(find.byType(TextField), '300');
-    await tester.tap(find.byTooltip('Jump to page'));
-    await tester.pumpAndSettle();
-    expect(find.text('Use page 300'), findsOneWidget);
-    await tester.tap(find.text('Use page 300'));
-    await tester.pumpAndSettle();
-    expect(result, [299]);
-  });
-  testWidgets('rotation page picker supports selecting several thumbnails', (tester) async {
-    List<int>? result;
-    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => Scaffold(body: TextButton(
-      onPressed: () async { result = await Navigator.push<List<int>>(context, MaterialPageRoute(builder: (_) => PdfPagePicker(
-        bytes: Uint8List(0), title: 'Rotate', multiple: true, documentLoader: () async => _PreviewDocument(3)))); },
-      child: const Text('Open'))))));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await Navigator.push<List<int>>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PdfPagePicker(
+                      bytes: Uint8List(0),
+                      title: 'Rotate',
+                      multiple: true,
+                      documentLoader: () async => _PreviewDocument(3),
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
     final checks = find.byType(Checkbox);

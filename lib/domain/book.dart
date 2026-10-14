@@ -1,5 +1,33 @@
-enum BookFormat { pdf, epub, txt, markdown, docx, doc, xlsx, xls, pptx, ppt, odt, ods, odp,
-  rtf, html, htm, mhtml, mobi, png, jpg, jpeg, tiff, tif, bmp, gif, svg, eps, ps }
+enum BookFormat {
+  pdf,
+  epub,
+  txt,
+  markdown,
+  docx,
+  doc,
+  xlsx,
+  xls,
+  pptx,
+  ppt,
+  odt,
+  ods,
+  odp,
+  rtf,
+  html,
+  htm,
+  mhtml,
+  mobi,
+  png,
+  jpg,
+  jpeg,
+  tiff,
+  tif,
+  bmp,
+  gif,
+  svg,
+  eps,
+  ps,
+}
 
 class Book {
   const Book({

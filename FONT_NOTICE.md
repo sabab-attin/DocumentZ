@@ -1,0 +1,1 @@
+Times New Roman is used where installed. Tinos is the bundled, openly licensed serif fallback for devices without it. No Windows font files are redistributed. See assets/fonts/OFL-Tinos.txt. Fonts are bundled; no font download occurs while reading.

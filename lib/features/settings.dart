@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../core/preferences.dart';
 import '../core/themes.dart';
+import 'app_icon_settings.dart';
+import 'reading_typography.dart';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.preferences});
+  const SettingsScreen({
+    super.key,
+    required this.preferences,
+    this.showTextOptions = true,
+  });
   final ReaderPreferences preferences;
+  final bool showTextOptions;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -19,10 +26,7 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         children: [
           const SizedBox(height: 16),
-          Text(
-            'Appearance',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
+          Text('Appearance', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 8),
 
           const SizedBox(height: 24),
@@ -72,28 +76,12 @@ class SettingsScreen extends StatelessWidget {
             value: preferences.pageDark,
             onChanged: preferences.setPageDark,
           ),
-          Text(
-            'Reading text size',
-            style: Theme.of(context).textTheme.titleLarge,
+          const SizedBox(height: 16),
+          ReadingTypography(
+            preferences: preferences,
+            showText: showTextOptions,
           ),
-          Text('${preferences.fontSize.round()} points'),
-          Semantics(
-            label: 'Reading text size',
-            child: Slider(
-              value: preferences.fontSize,
-              min: 16,
-              max: 32,
-              divisions: 8,
-              label: '${preferences.fontSize.round()} points',
-              semanticFormatterCallback: (value) => '${value.round()} points',
-              onChanged: preferences.setFontSize,
-            ),
-          ),
-          Text(
-            'Text preview',
-            style: TextStyle(fontSize: preferences.fontSize, height: 1.6),
-          ),
-          const SizedBox(height: 24),
+          if (!preferences.documentSpecific) const AppIconSettings(),
           if (preferences.saveFailed)
             const Text(
               'Preferences work for this session, but could not be saved on this device.',

@@ -1,20 +1,41 @@
 import 'package:flutter/material.dart';
+
 import '../core/preferences.dart';
+import 'reading_typography.dart';
 
 class TextAlignmentMenu extends StatelessWidget {
   const TextAlignmentMenu({super.key, required this.preferences});
   final ReaderPreferences preferences;
   @override
   Widget build(BuildContext context) => PopupMenuButton<ReadingAlignment>(
-    tooltip: 'Text alignment', initialValue: preferences.alignment,
+    tooltip: 'Text alignment',
+    initialValue: preferences.alignment,
     onSelected: preferences.setAlignment,
-    icon: Icon(switch (preferences.alignment) {
-      ReadingAlignment.left => Icons.format_align_left,
-      ReadingAlignment.right => Icons.format_align_right,
-      ReadingAlignment.center => Icons.format_align_center,
-      ReadingAlignment.justify => Icons.format_align_justify,
-    }),
-    itemBuilder: (_) => ReadingAlignment.values.map((value) => CheckedPopupMenuItem(
-      value: value, checked: preferences.alignment == value, child: Text(value.label))).toList(),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(alignmentIcon(preferences.alignment)),
+          const SizedBox(height: 8),
+          Text(preferences.alignment.label),
+        ],
+      ),
+    ),
+    itemBuilder: (_) => ReadingAlignment.values
+        .map(
+          (value) => CheckedPopupMenuItem(
+            value: value,
+            checked: preferences.alignment == value,
+            child: Row(
+              children: [
+                Icon(alignmentIcon(value)),
+                const SizedBox(width: 12),
+                Text(value.label),
+              ],
+            ),
+          ),
+        )
+        .toList(),
   );
 }

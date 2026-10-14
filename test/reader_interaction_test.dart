@@ -9,30 +9,72 @@ import 'package:documentz/features/page_turn.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
-  testWidgets('text drag applies the active tool without a hold or second action', (tester) async {
-    final store = AnnotationStore('direct-text');
-    await store.load();
-    for (final tool in [MarkTool.highlight, MarkTool.underline, MarkTool.strikethrough]) {
-      await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 300,
-        child: AnnotatedParagraph(element: html.parseFragment('<p>First line of text and a second line of text to mark.</p>').children.single,
-          block: 'body', anchor: 'chapter:1', store: store, style: const TextStyle(fontSize: 20, height: 1.6),
-          activeTool: tool, onLink: (_) {}, onSelection: (_) {})))));
-      final start = tester.getTopLeft(find.byType(SelectableText)) + const Offset(1, 12);
-      final touch = await tester.startGesture(start);
-      await touch.moveTo(start + const Offset(200, 32));
-      await touch.up();
-      await tester.pumpAndSettle();
-      expect(store.marks.last.tool, tool);
-      expect(store.marks.last.end, greaterThan(store.marks.last.start));
-      expect(store.marks.last.quote, startsWith('First'));
-    }
-  });
-  testWidgets('opening controls preserves the full document viewport', (tester) async {
+  testWidgets(
+    'text drag applies the active tool without a hold or second action',
+    (tester) async {
+      final store = AnnotationStore('direct-text');
+      await store.load();
+      for (final tool in [
+        MarkTool.highlight,
+        MarkTool.underline,
+        MarkTool.strikethrough,
+      ]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 300,
+                child: AnnotatedParagraph(
+                  element: html
+                      .parseFragment(
+                        '<p>First line of text and a second line of text to mark.</p>',
+                      )
+                      .children
+                      .single,
+                  block: 'body',
+                  anchor: 'chapter:1',
+                  store: store,
+                  style: const TextStyle(fontSize: 20, height: 1.6),
+                  activeTool: tool,
+                  onLink: (_) {},
+                  onSelection: (_) {},
+                ),
+              ),
+            ),
+          ),
+        );
+        final start =
+            tester.getTopLeft(find.byType(SelectableText)) +
+            const Offset(1, 12);
+        final touch = await tester.startGesture(start);
+        await touch.moveTo(start + const Offset(200, 32));
+        await touch.up();
+        await tester.pumpAndSettle();
+        expect(store.marks.last.tool, tool);
+        expect(store.marks.last.end, greaterThan(store.marks.last.start));
+        expect(store.marks.last.quote, startsWith('First'));
+      }
+    },
+  );
+  testWidgets('opening controls preserves the full document viewport', (
+    tester,
+  ) async {
     final expanded = ValueNotifier<bool>(false);
     addTearDown(expanded.dispose);
     const pageKey = ValueKey('page');
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ReaderControlsScope(expanded: expanded,
-      child: const ReaderControlsOverlay(controls: SizedBox(height: 150, child: Text('Tools')), child: ColoredBox(key: pageKey, color: Colors.white))))));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReaderControlsScope(
+            expanded: expanded,
+            child: const ReaderControlsOverlay(
+              controls: SizedBox(height: 150, child: Text('Tools')),
+              child: ColoredBox(key: pageKey, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
     final size = tester.getSize(find.byKey(pageKey));
     expect(find.text('Tools'), findsNothing);
     expanded.value = true;
@@ -43,11 +85,25 @@ void main() {
     await tester.pump();
     expect(tester.getSize(find.byKey(pageKey)), size);
   });
-  testWidgets('reduced motion changes page immediately without a curl', (tester) async {
+  testWidgets('reduced motion changes page immediately without a curl', (
+    tester,
+  ) async {
     final key = GlobalKey<PageTurnState>();
     int changed = 0;
-    await tester.pumpWidget(MaterialApp(home: MediaQuery(data: const MediaQueryData(disableAnimations: true),
-      child: SizedBox.expand(child: PageTurn(key: key, paper: Colors.white, child: const ColoredBox(color: Colors.white))))));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: SizedBox.expand(
+            child: PageTurn(
+              key: key,
+              paper: Colors.white,
+              child: const ColoredBox(color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
     await key.currentState!.turn(1, () => changed++);
     expect(changed, 1);
     expect(key.currentState!.busy, false);

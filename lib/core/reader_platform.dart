@@ -1,0 +1,23 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+class ReaderPlatform {
+  static const channel = MethodChannel('documentz/appearance');
+  static bool get isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static Future<void> fullscreen(bool enabled) async {
+    if (!isAndroid) return;
+    try {
+      await channel.invokeMethod<void>('fullscreen', {'enabled': enabled});
+    } on PlatformException {
+      /* Leave document navigation usable. */
+    } on MissingPluginException {
+      /* Widget tests and older installed builds. */
+    }
+  }
+
+  static Future<String> currentIcon() async =>
+      await channel.invokeMethod<String>('getIcon') ?? 'classic';
+  static Future<void> changeIcon(String icon) =>
+      channel.invokeMethod<void>('setIcon', {'icon': icon});
+}

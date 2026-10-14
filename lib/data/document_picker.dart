@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+
 import 'import_validation.dart';
 
 class PickedDocument {
@@ -11,7 +12,8 @@ typedef DocumentPicker = Future<PickedDocument?> Function();
 
 Future<PickedDocument?> pickDocument() async {
   final file = await FilePicker.pickFile(
-    type: FileType.custom, allowedExtensions: documentExtensions,
+    type: FileType.custom,
+    allowedExtensions: documentExtensions,
   );
   if (file == null) return null;
   final length = file.lengthSync() ?? await file.length();

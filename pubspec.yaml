@@ -78,6 +78,20 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  fonts:
+    - family: Tinos
+      fonts:
+        - asset: assets/fonts/Tinos-Regular.ttf
+        - asset: assets/fonts/Tinos-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Tinos-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Tinos-BoldItalic.ttf
+          weight: 700
+          style: italic
+  assets:
+    - assets/fonts/OFL-Tinos.txt
+    - assets/app_icons/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

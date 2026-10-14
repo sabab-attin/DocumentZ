@@ -122,7 +122,7 @@ Sharing explicitly sends the selected document through the chosen system applica
 - **Forms and signatures have boundaries.** XFA forms, JavaScript calculations, and certificate-chain validation are not implemented. Editing can invalidate existing signatures.
 - **Page dark mode preserves image colors.** Image-only PDFs retain their original appearance; browser PDF previews retain original page colors.
 - Imports are limited to 100 MB, with additional archive and image-decoding limits documented in [FORMATS.md](FORMATS.md).
-- SQLite storage, persistent reading progress, Supabase synchronization, and retrieval-augmented search are planned rather than implemented.
+- SQLite storage, Supabase synchronization, and retrieval-augmented search are planned rather than implemented.
 
 ## Project structure
 

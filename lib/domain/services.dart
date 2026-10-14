@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'book.dart';
 
 /// Implement with SQLite without coupling screens to database queries.
@@ -12,6 +13,11 @@ abstract interface class ImportableLibrary implements LibraryRepository {
   bool get persistsFiles;
   Future<Book> importDocument(String name, Stream<List<int>> contents);
   Future<Uint8List> readDocument(Book book);
+}
+
+abstract interface class MutableLibrary implements ImportableLibrary {
+  Future<void> renameDocument(Book book, String title);
+  Future<void> deleteDocument(Book book);
 }
 
 /// Future Supabase implementation owns authentication and conflict handling.
