@@ -10,7 +10,7 @@ Download the latest published **Android** release. Version 1.0.2 contains the re
 
 | Download | Choose this for |
 | --- | --- |
-| [Newer Android phones — ARM64 (v8a)](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-arm64-v8a-release.apk) | Most modern Android phones and tablets, including the Google Pixel 6a |
+| [Newer Android phones — ARM64 (v8a)](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-arm64-v8a-release.apk) | Most modern Android phones and tablets |
 | [Older Android phones — ARM32 (v7a)](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-armeabi-v7a-release.apk) | Devices that require 32-bit ARM apps |
 | [Android x86_64 — Intel/AMD](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-x86_64-release.apk) | Android devices and emulators using x86_64 processors |
 
