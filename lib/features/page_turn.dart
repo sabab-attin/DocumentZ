@@ -20,7 +20,7 @@ class PageTurnState extends State<PageTurn>
   final boundary = GlobalKey();
   late final animation = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 380),
+    duration: const Duration(milliseconds: 240),
   );
   ui.Image? snapshot;
   ui.ImageShader? snapshotShader;
@@ -44,9 +44,17 @@ class PageTurnState extends State<PageTurn>
       final area = box.size.width * box.size.height;
       final ratio = math.min(
         MediaQuery.devicePixelRatioOf(context),
-        math.min(2.0, math.sqrt(1500000 / math.max(1.0, area))),
+        math.min(1.5, math.sqrt(900000 / math.max(1.0, area))),
       );
-      final image = await box.toImage(pixelRatio: ratio);
+      // Schedule rasterization without waiting for GPU completion before the
+      // destination page can move. The image remains owned until animation ends.
+      final ui.Image image;
+      try {
+        image = box.toImageSync(pixelRatio: ratio);
+      } catch (_) {
+        changePage();
+        return;
+      }
       if (!mounted) {
         image.dispose();
         return;
@@ -127,7 +135,7 @@ class _CurlPainter extends CustomPainter {
   final ui.Image image;
   final ui.ImageShader shader;
   final Animation<double> animation;
-  double get progress => Curves.easeInOutSine.transform(animation.value);
+  double get progress => Curves.easeOutCubic.transform(animation.value);
   final int direction;
   final Color paper;
   @override
@@ -180,7 +188,7 @@ class _CurlPainter extends CustomPainter {
       return Offset(direction > 0 ? mapped : size.width - mapped, y);
     }
 
-    const columns = 160, rows = 12;
+    const columns = 96, rows = 8;
     for (int row = 0; row < rows; row++) {
       final yMid = (row + .5) * size.height / rows;
       final rowCrease = fold + tilt * (yMid / size.height - .5);
@@ -262,7 +270,7 @@ class _CurlPainter extends CustomPainter {
         ..color = Colors.black.withValues(alpha: .18)
         ..style = PaintingStyle.stroke
         ..strokeWidth = radius * .45
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
     if (front.isNotEmpty) {
       final mesh = ui.Vertices(

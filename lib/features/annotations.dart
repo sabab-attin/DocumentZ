@@ -1,3 +1,4 @@
+import '../data/sync_recovery.dart';
 import 'continuous_marks.dart';
 import 'text_controller_owner.dart';
 
@@ -208,6 +209,7 @@ class AnnotationStore extends ChangeNotifier {
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      await recoverPendingSyncAnnotations(prefs);
       final raw = prefs.getString(_key);
       if (raw != null) {
         final parsed = (jsonDecode(raw) as List)

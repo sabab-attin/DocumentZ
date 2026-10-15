@@ -45,6 +45,12 @@ class _ReaderScreenState extends State<ReaderScreen>
   bool _leaving = false, _confirming = false;
   Future<void> _leave() async {
     if (_confirming || _leaving) return;
+    // A nested menu can veto Back without any document edits.
+    if (!annotations.hasChanges) return;
+    if (controls.value) {
+      controls.value = false;
+      return;
+    }
     _confirming = true;
     try {
       final navigator = Navigator.of(context);

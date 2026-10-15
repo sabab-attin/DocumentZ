@@ -108,6 +108,21 @@ void main() {
       expect(decoded.height, 256);
     },
   );
+
+  test(
+    'page resizing makes smaller dimensions without changing the PNG source',
+    () async {
+      final pixels = image.Image(width: 128, height: 192);
+      final png = Uint8List.fromList(image.encodePng(pixels));
+      final before = Uint8List.fromList(png);
+      final jpeg = await resizeAndCompressPageImage(png, 65, 64);
+      final decoded = image.decodeJpg(jpeg);
+      expect(decoded, isNotNull);
+      expect(decoded!.width, 64);
+      expect(decoded.height, 96);
+      expect(png, orderedEquals(before));
+    },
+  );
   test('image-only PDF keeps page sizes and page count', () async {
     final jpeg = Uint8List.fromList(
       image.encodeJpg(image.Image(width: 8, height: 8)),

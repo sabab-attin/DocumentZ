@@ -4,19 +4,19 @@
 
 DocumentZ is a Flutter document reader and PDF editor for Android and Windows. Browse local documents, return to recent files, customize your reading view, and work with PDFs in one app.
 
-## Download v1.0.0
+## Download for Android
 
-The first release is available for **Android**.
+Download the latest published **Android** release. Version 1.0.2 contains the reader and local annotation sync updates described below.
 
 | Download | Choose this for |
 | --- | --- |
-| [Newer Android phones — ARM64 (v8a)](https://github.com/sabab-attin/DocumentZ/releases/download/v1.0.0/app-arm64-v8a-release.apk) | Most modern Android phones and tablets, including the Google Pixel 6a |
-| [Older Android phones — ARM32 (v7a)](https://github.com/sabab-attin/DocumentZ/releases/download/v1.0.0/app-armeabi-v7a-release.apk) | Devices that require 32-bit ARM apps |
-| [Android x86_64 — Intel/AMD](https://github.com/sabab-attin/DocumentZ/releases/download/v1.0.0/app-x86_64-release.apk) | Android devices and emulators using x86_64 processors |
+| [Newer Android phones — ARM64 (v8a)](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-arm64-v8a-release.apk) | Most modern Android phones and tablets, including the Google Pixel 6a |
+| [Older Android phones — ARM32 (v7a)](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-armeabi-v7a-release.apk) | Devices that require 32-bit ARM apps |
+| [Android x86_64 — Intel/AMD](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-x86_64-release.apk) | Android devices and emulators using x86_64 processors |
 
 Choose by **processor architecture**, not just the phone's age. All three downloads are Android APKs. The x86_64 APK is **not a Windows installer**.
 
-[View release notes and all downloads](https://github.com/sabab-attin/DocumentZ/releases/tag/v1.0.0)
+[View release notes and all downloads](https://github.com/sabab-attin/DocumentZ/releases/latest)
 
 ### Install on Android
 
@@ -32,7 +32,17 @@ Updates must use the same application ID and signing certificate as the installe
 
 ### Windows
 
-The project includes a Windows desktop target, but **no Windows download is included in the v1.0.0 assets linked above**. Developers can build it from source using the instructions below.
+The project includes a Windows desktop target, but **no Windows download is included in the Android assets linked above**. Developers can build it from source using the instructions below.
+
+## Changes in v1.0.2
+
+- Local Wi-Fi annotation and bookmark sync between explicitly paired Android and Windows devices, without a hosted server. Reading and local editing remain available offline. See [SYNC.md](SYNC.md) for pairing, security controls and limits.
+- Ebook pagination through long chapters, whole-image fitting, adaptive page margins, publisher paragraph styles and framed content, with paper texture in light and dark page modes.
+- Faster page-turn transitions that reuse the chapter layout, update the page footer separately, and retain one follow-up turn during an animation.
+- Document browsing filtered to supported formats, with recently modified files first; larger page-organizing previews and drag-to-top/bottom controls.
+- Booklet defaults to all pages in one booklet. Printing tip: choose both sides and flip on the short edge.
+
+Ebook page counts follow the current screen size and typography; they can change with font size, orientation, or fullscreen mode. They are not guaranteed to match a printed edition or another reader.
 
 ## Features
 
@@ -48,6 +58,8 @@ The project includes a Windows desktop target, but **no Windows download is incl
 
 - Read PDFs in continuous, single-page, or two-page views.
 - Use document search and match navigation, contents, bookmarks, thumbnails, and page jumps.
+- Follow embedded PDF citations and figure/table links, plus ebook chapter and footnote links.
+- Select a word and choose **Look up** for Google results in an in-app browser tab on supported devices. Only the requested lookup needs an internet connection.
 - Adjust fit and zoom, enable page buttons, and use full-screen reading.
 - Change fonts, text size, and alignment in formats that support reflowable text.
 - Set global reading defaults or customize an individual document.
@@ -82,11 +94,12 @@ Availability varies by document format and platform.
 
 | Category | Formats | Reading approach |
 | --- | --- | --- |
-| Documents | PDF, EPUB | Fixed PDF pages or reflowable EPUB chapters |
+| Documents | PDF, EPUB | PDF pages or reflowable ebook pages, spreads, and continuous reading |
+| Classic ebooks | MOBI (unencrypted, uncompressed or PalmDOC) | Reflowable ebook pages; other MOBI variants need Windows conversion |
 | Text and saved web pages | TXT, Markdown, RTF, HTML/HTM, MHTML/MHT | Text or simplified HTML |
 | Office and OpenDocument | DOCX, XLSX, PPTX, ODT, ODS, ODP | Readable content, sheets, or slide sections |
 | Images | PNG, JPG/JPEG, BMP, GIF, TIFF/TIF, SVG | Image views; navigation for multi-page TIFF |
-| Formats requiring external conversion | DOC, XLS, PPT, MOBI, PS, EPS | Local conversion on Windows using separately installed tools |
+| Formats requiring external conversion | DOC, XLS, PPT, PS, EPS | Local conversion on Windows using separately installed tools |
 
 Office and EPUB views prioritize readable content; they do not reproduce every detail of the original layout. Legacy conversion requires tools such as LibreOffice, Calibre, or Ghostscript. See [FORMATS.md](FORMATS.md) for setup and format-specific limits.
 
@@ -177,3 +190,18 @@ A project-level **LICENSE** file has not yet been added. Do not assume an open-s
 - A small, non-sensitive sample document or screenshot when useful.
 
 Remove personal information, document passwords, and signing credentials from reports.
+
+
+### Annotation sync over local Wi-Fi
+
+On the installed Android and Windows apps, open **Settings → Annotation sync**.
+Enable sync on both devices, then use a one-time pairing code and confirm the
+matching verification number. Select **Sync now** on a paired device to exchange
+saved annotations and bookmarks. No internet connection, account or hosted
+service is required. Both devices need the same original document imported;
+document contents are fingerprinted locally, and whole documents are not sent.
+
+Keep the sync screen open on both devices. Leaving it or putting the app in the
+background stops its local listener and discovery. Reading, editing and local
+annotation saving work independently of sync. Concurrent changes are preserved
+for review. See [local sync details](SYNC.md) for security and current limits.

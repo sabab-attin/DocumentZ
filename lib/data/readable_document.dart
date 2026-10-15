@@ -1,3 +1,5 @@
+import 'mobi_document.dart';
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -79,6 +81,9 @@ Map<String, String> relationships(Map<String, Uint8List> files, String part) {
 
 EpubDocumentData parseReadableDocument((BookFormat, Uint8List) input) {
   final (format, bytes) = input;
+  if (format == BookFormat.mobi) {
+    return parseMobi(bytes);
+  }
   final sections = <EpubSection>[];
   final resources = <String, Uint8List>{};
   void section(String path, String title, String markup) =>
@@ -121,7 +126,7 @@ EpubDocumentData parseReadableDocument((BookFormat, Uint8List) input) {
         }
       }
     }
-    section('index.html', 'Document', document.body?.innerHtml ?? markup);
+    section('index.html', 'Document', document.outerHtml);
   } else {
     resources.addAll(documentArchive(bytes));
     XmlDocument xml(String path) {
@@ -519,5 +524,5 @@ String mhtmlMarkup(String source, Map<String, Uint8List> resources) {
         locations[Uri.tryParse(base)?.resolve(src).toString()];
     if (key != null) image.attributes['src'] = key;
   }
-  return document.body?.innerHtml ?? page;
+  return document.outerHtml;
 }

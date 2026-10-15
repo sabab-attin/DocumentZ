@@ -53,6 +53,32 @@ class _PdfThumbnailState extends State<PdfThumbnail> {
   );
 }
 
+// Keep pages at least 250 logical pixels wide when space allows.
+int pdfPreviewColumns(double width) =>
+    (width / 250).floor().clamp(1, 6).toInt();
+
+Future<void> showPdfPagePreview(BuildContext context, PdfPage page) async {
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: Text('Page ${page.pageNumber}')),
+        body: SafeArea(
+          child: InteractiveViewer(
+            minScale: 1,
+            maxScale: 5,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: page.width / page.height,
+                child: PdfThumbnail(page: page, renderWidth: 1600),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class PdfSearchHit {
   const PdfSearchHit(this.page, this.start, this.end, this.snippet);
   final int page, start, end;
@@ -291,27 +317,32 @@ class _PdfNavigationScreenState extends State<PdfNavigationScreen> {
                 ? const Center(child: Text('This PDF has no outline.'))
                 : ListView(children: snapshot.data!.map(node).toList()),
           ),
-          GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 180,
-              childAspectRatio: .65,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-            ),
-            itemCount: widget.controller.pageCount,
-            itemBuilder: (context, i) => InkWell(
-              onTap: () => go(i + 1),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: PdfThumbnail(page: widget.controller.pages[i]),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text('Page ${i + 1}'),
-                  ),
-                ],
+          LayoutBuilder(
+            builder: (context, constraints) => GridView.builder(
+              padding: const EdgeInsets.all(16),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: pdfPreviewColumns(constraints.maxWidth),
+                childAspectRatio: .65,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+              ),
+              itemCount: widget.controller.pageCount,
+              itemBuilder: (context, i) => InkWell(
+                onTap: () => go(i + 1),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: PdfThumbnail(
+                        page: widget.controller.pages[i],
+                        renderWidth: 700,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Text('Page ${i + 1}'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

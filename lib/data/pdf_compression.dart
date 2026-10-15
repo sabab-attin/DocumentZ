@@ -172,3 +172,23 @@ Future<PdfCompressionResult> _imagePdf(List<CompressedPdfPage> pages) async {
   }
   return PdfCompressionResult(bytes, pages: pages.length, imageOnly: true);
 }
+
+Future<Uint8List> resizeAndCompressPageImage(
+  Uint8List png,
+  int quality,
+  int width,
+) => compute(_resizedJpeg, (png, quality, width));
+Uint8List _resizedJpeg((Uint8List, int, int) job) {
+  var pixels = image.decodePng(job.$1);
+  if (pixels == null) {
+    throw const FormatException('Could not decode this page.');
+  }
+  if (pixels.width > job.$3) {
+    pixels = image.copyResize(
+      pixels,
+      width: job.$3,
+      interpolation: image.Interpolation.average,
+    );
+  }
+  return Uint8List.fromList(image.encodeJpg(pixels, quality: job.$2));
+}

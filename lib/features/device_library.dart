@@ -1,3 +1,4 @@
+import '../data/browse_formats.dart';
 import '../data/document_file_info.dart';
 import 'document_shelf.dart';
 import 'shelf_preferences.dart';
@@ -53,8 +54,9 @@ class _LibraryItem {
   BookFormat get format => book?.format ?? importFormat(name);
 }
 
-class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
-  final shelf = ShelfPreferences('device-library');
+class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
+    with WidgetsBindingObserver {
+  final shelf = ShelfPreferences('device-library', newestFirst: true);
   Map<String, DocumentFileInfo> fileInfo = {};
   void _shelfChanged() {
     if (mounted) setState(() {});
@@ -104,16 +106,23 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
   final query = TextEditingController();
   final scroll = ScrollController();
   bool loading = true, busy = false;
+  bool storageAllowed = false;
   int generation = 0;
   String? failure;
   static const mappingKey = 'documentz.deviceImports.v1';
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     LibraryChanges.instance.addListener(_refresh);
     shelf.addListener(_shelfChanged);
     unawaited(shelf.load());
     _refresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_offerStorageAccess());
+      }
+    });
     unawaited(ReadingProgress.instance.load());
   }
 
@@ -125,6 +134,7 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     LibraryChanges.instance.removeListener(_refresh);
     shelf.removeListener(_shelfChanged);
     shelf.dispose();
@@ -132,6 +142,13 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
     query.dispose();
     scroll.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && !busy && !loading) {
+      unawaited(_refresh());
+    }
   }
 
   Future<void> _refresh() async {
@@ -147,6 +164,7 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
       final mappings = (jsonDecode(prefs.getString(mappingKey) ?? '{}') as Map)
           .cast<String, String>();
       final books = await widget.repository.listBooks();
+      final access = await hasDeviceStorageAccess();
       final scan = await scanDeviceDocuments();
       final metadata = await documentFileInfo(books);
       await RecentDocuments.instance.load();
@@ -154,12 +172,15 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
       final mapped = <String>{};
       final next = <_LibraryItem>[];
       for (final doc in scan.documents) {
+        if (!isBrowseDocumentName(doc.name)) {
+          continue;
+        }
         final book = byId[mappings[doc.versionKey]];
         if (book != null) mapped.add(book.id);
         next.add(_LibraryItem(doc.location, doc.name, book, doc));
       }
       for (final book in books) {
-        if (!mapped.contains(book.id)) {
+        if (!mapped.contains(book.id) && isBrowseDocumentFormat(book.format)) {
           next.add(_LibraryItem(book.id, book.title, book, null));
         }
       }
@@ -171,6 +192,7 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
           ..addAll(mappings);
         items = next;
         fileInfo = metadata;
+        storageAllowed = access;
         folders = scan.folders;
         errors = scan.errors;
         selected.removeWhere((id) => !items.any((item) => item.id == id));
@@ -406,6 +428,70 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
     }
   }
 
+  Future<void> _offerStorageAccess() async {
+    if (!supportsDeviceStorageAccess) {
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (await hasDeviceStorageAccess() ||
+          prefs.getBool('documentz.storageAccessAsked.v1') == true) {
+        return;
+      }
+      await prefs.setBool('documentz.storageAccessAsked.v1', true);
+      if (!mounted) {
+        return;
+      }
+      final allow = await showDialog<bool>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: const Text('Browse local documents'),
+          content: const Text(
+            'Allow storage access to find documents across your device. You control this permission in Android settings.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: const Text('Allow access'),
+            ),
+          ],
+        ),
+      );
+      if (allow == true && mounted) {
+        await _storageAccess();
+      }
+    } catch (_) {
+      // The access button remains available if the system request could not open.
+    }
+  }
+
+  Future<void> _storageAccess() async {
+    if (busy) {
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      await requestDeviceStorageAccess();
+      await _refresh();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open storage access settings.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => busy = false);
+      }
+    }
+  }
+
   Future<void> _addFolder() async {
     if (busy || loading) return;
     setState(() => busy = true);
@@ -560,6 +646,31 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
                       ),
                     ],
                   ),
+                  if (supportsDeviceStorageAccess && storageAllowed)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.storage_outlined),
+                      title: const Text('Device storage access is on'),
+                      subtitle: Text(
+                        loading
+                            ? 'Finding documents…'
+                            : '${items.where((item) => item.device != null).length} device documents',
+                      ),
+                      trailing: IconButton(
+                        tooltip: 'Scan device storage',
+                        onPressed: loading || busy ? null : _refresh,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ),
+                  if (supportsDeviceStorageAccess && !storageAllowed)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: OutlinedButton.icon(
+                        onPressed: busy ? null : _storageAccess,
+                        icon: const Icon(Icons.storage_outlined),
+                        label: const Text('Allow local storage access'),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -619,14 +730,22 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen> {
                           children: [
                             Text(
                               text.isEmpty
-                                  ? 'Add folders to find documents on this device.'
+                                  ? supportsDeviceStorageAccess
+                                        ? 'Allow local storage access to find documents.'
+                                        : 'Add folders to find documents on this device.'
                                   : 'No documents found.',
                             ),
                             if (text.isEmpty)
                               TextButton.icon(
-                                onPressed: _addFolder,
-                                icon: const Icon(Icons.folder_open),
-                                label: const Text('Add folder'),
+                                onPressed: supportsDeviceStorageAccess
+                                    ? _storageAccess
+                                    : _addFolder,
+                                icon: const Icon(Icons.storage_outlined),
+                                label: Text(
+                                  supportsDeviceStorageAccess
+                                      ? 'Allow access'
+                                      : 'Add folder',
+                                ),
                               ),
                           ],
                         ),

@@ -11,9 +11,11 @@ class PdfPageOrganizer extends StatefulWidget {
     super.key,
     required this.bytes,
     this.title = 'Organize pages',
+    this.documentLoader,
   });
   final Uint8List bytes;
   final String title;
+  final Future<PdfDocument> Function()? documentLoader;
   @override
   State<PdfPageOrganizer> createState() => _PdfPageOrganizerState();
 }
@@ -30,8 +32,13 @@ class _PdfPageOrganizerState extends State<PdfPageOrganizer> {
 
   Future<void> load() async {
     try {
-      await pdfrxFlutterInitialize();
-      final result = await PdfDocument.openData(widget.bytes);
+      final PdfDocument result;
+      if (widget.documentLoader != null) {
+        result = await widget.documentLoader!();
+      } else {
+        await pdfrxFlutterInitialize();
+        result = await PdfDocument.openData(widget.bytes);
+      }
       if (!mounted) {
         await result.dispose();
         return;
@@ -73,6 +80,10 @@ class _PdfPageOrganizerState extends State<PdfPageOrganizer> {
     });
   }
 
+  void move(int from, int to) {
+    setState(() => order.insert(to, order.removeAt(from)));
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -99,11 +110,11 @@ class _PdfPageOrganizerState extends State<PdfPageOrganizer> {
             children: [
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Row(
+                child: Wrap(
+                  spacing: 16,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Expanded(
-                      child: Text('${order.length} pages · Drag to reorder'),
-                    ),
+                    Text('${order.length} pages · Drag to reorder'),
                     TextButton.icon(
                       onPressed: choosePages,
                       icon: const Icon(Icons.grid_view),
@@ -113,40 +124,129 @@ class _PdfPageOrganizerState extends State<PdfPageOrganizer> {
                 ),
               ),
               Expanded(
-                child: ReorderableListView.builder(
-                  itemCount: order.length,
-                  onReorderItem: (from, to) =>
-                      setState(() => order.insert(to, order.removeAt(from))),
-                  itemBuilder: (context, i) => Card(
-                    key: ValueKey(order[i]),
-                    child: ListTile(
-                      leading: SizedBox(
-                        width: 52,
-                        height: 72,
-                        child: PdfThumbnail(page: document!.pages[order[i]]),
-                      ),
-                      title: Text('Page ${order[i] + 1}'),
-                      subtitle: Text('Position ${i + 1}'),
-                      minVerticalPadding: 16,
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Move up',
-                            onPressed: i == 0
-                                ? null
-                                : () => setState(
-                                    () =>
-                                        order.insert(i - 1, order.removeAt(i)),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 840),
+                    child: ReorderableListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                      buildDefaultDragHandles: false,
+                      itemCount: order.length,
+                      onReorderItem: move,
+                      itemBuilder: (context, i) => ReorderableDelayedDragStartListener(
+                        key: ValueKey(order[i]),
+                        index: i,
+                        child: Card(
+                          clipBehavior: Clip.antiAlias,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                      ),
+                                      child: Text(
+                                        'Page ${order[i] + 1} · Position ${i + 1}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium,
+                                      ),
+                                    ),
+                                    Wrap(
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        ReorderableDragStartListener(
+                                          index: i,
+                                          child: Semantics(
+                                            label:
+                                                'Drag page ${order[i] + 1} to reorder',
+                                            child: const Padding(
+                                              padding: EdgeInsets.all(12),
+                                              child: Icon(Icons.drag_handle),
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Move up',
+                                          onPressed: i == 0
+                                              ? null
+                                              : () => move(i, i - 1),
+                                          icon: const Icon(Icons.arrow_upward),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Move down',
+                                          onPressed: i == order.length - 1
+                                              ? null
+                                              : () => move(i, i + 1),
+                                          icon: const Icon(
+                                            Icons.arrow_downward,
+                                          ),
+                                        ),
+                                        PopupMenuButton<String>(
+                                          tooltip: 'Move page',
+                                          onSelected: (value) => move(
+                                            i,
+                                            value == 'first'
+                                                ? 0
+                                                : order.length - 1,
+                                          ),
+                                          itemBuilder: (_) => const [
+                                            PopupMenuItem(
+                                              value: 'first',
+                                              child: Text('Move to beginning'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'last',
+                                              child: Text('Move to end'),
+                                            ),
+                                          ],
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Remove page',
+                                          onPressed: () =>
+                                              setState(() => order.removeAt(i)),
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => showPdfPagePreview(
+                                  context,
+                                  document!.pages[order[i]],
+                                ),
+                                child: Semantics(
+                                  label: 'Enlarge page ${order[i] + 1}',
+                                  button: true,
+                                  child: SizedBox(
+                                    height:
+                                        (MediaQuery.sizeOf(context).height * .5)
+                                            .clamp(220.0, 480.0)
+                                            .toDouble(),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: PdfThumbnail(
+                                        key: ValueKey('page:${order[i]}'),
+                                        page: document!.pages[order[i]],
+                                        renderWidth: 800,
+                                      ),
+                                    ),
                                   ),
-                            icon: const Icon(Icons.arrow_upward),
+                                ),
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            tooltip: 'Remove page',
-                            onPressed: () => setState(() => order.removeAt(i)),
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),

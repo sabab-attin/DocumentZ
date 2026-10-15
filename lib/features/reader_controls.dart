@@ -149,13 +149,16 @@ class ReaderBottomBar extends StatelessWidget {
     required this.label,
     required this.onPrevious,
     required this.onNext,
+    this.pageInk,
   });
   final ReaderPreferences preferences;
   final String label;
+  final Color? pageInk;
   final VoidCallback? onPrevious, onNext;
   @override
   Widget build(BuildContext context) {
     final chrome = ReaderControlsScope.chromeOf(context);
+    final ink = pageInk ?? readerPanelInk;
     Widget bar(bool visible) => IgnorePointer(
       ignoring: !visible,
       child: AnimatedOpacity(
@@ -168,9 +171,9 @@ class ReaderBottomBar extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Material(
-              color: readerPanelColor,
+              color: pageInk == null ? readerPanelColor : Colors.transparent,
               borderRadius: BorderRadius.circular(28),
-              elevation: 6,
+              elevation: pageInk == null ? 6 : 0,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
@@ -180,25 +183,38 @@ class ReaderBottomBar extends StatelessWidget {
                       IconButton(
                         tooltip: 'Previous page',
                         onPressed: onPrevious,
-                        color: readerPanelInk,
+                        color: ink,
                         icon: const ReaderToolIcon(Icons.chevron_left),
                       ),
                     if (preferences.showPageIndicator)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 14,
-                        ),
-                        child: Text(
-                          label,
-                          style: const TextStyle(color: readerPanelInk),
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 14,
+                          ),
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: ink.withValues(
+                                alpha: pageInk == null ? 1 : .72,
+                              ),
+                              fontFamily: pageInk == null
+                                  ? null
+                                  : preferences.fontFamily,
+                              fontSize: pageInk == null ? null : 12,
+                              letterSpacing: pageInk == null ? null : .3,
+                            ),
+                          ),
                         ),
                       ),
                     if (preferences.showPageButtons)
                       IconButton(
                         tooltip: 'Next page',
                         onPressed: onNext,
-                        color: readerPanelInk,
+                        color: ink,
                         icon: const ReaderToolIcon(Icons.chevron_right),
                       ),
                   ],

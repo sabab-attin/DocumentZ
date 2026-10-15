@@ -1,3 +1,5 @@
+import '../data/document_links.dart';
+
 import 'dart:async';
 
 import 'continuous_pdf_layout.dart';
@@ -392,25 +394,27 @@ class _DocumentReaderState extends State<DocumentReader> {
   ) {
     final delegate = params.textSelectionDelegate;
     if (!delegate.hasSelectedText || !delegate.isCopyAllowed) return null;
-    return SelectionPanel(
-      readText: delegate.getSelectedText,
-      onClose: () {
-        params.dismissContextMenu();
-        unawaited(delegate.clearTextSelection());
-      },
-      onAnnotate: () {
-        if (!mounted) return;
-        setState(() {
-          _annotationMode = true;
-          tool = MarkTool.browse;
-        });
-        ReaderControlsScope.chromeOf(context)
-            ?.activity(autoHide: widget.preferences.autoHideControls);
-      },
-      onMark: (kind, color) async {
-        setState(() => _inkColor = color);
-        await _markSelection(kind, delegate);
-      },
+    return Positioned.fill(
+      child: SelectionPanel(
+        readText: delegate.getSelectedText,
+        onClose: () {
+          params.dismissContextMenu();
+          unawaited(delegate.clearTextSelection());
+        },
+        onAnnotate: () {
+          if (!mounted) return;
+          setState(() {
+            _annotationMode = true;
+            tool = MarkTool.browse;
+          });
+          ReaderControlsScope.chromeOf(context)
+              ?.activity(autoHide: widget.preferences.autoHideControls);
+        },
+        onMark: (kind, color) async {
+          setState(() => _inkColor = color);
+          await _markSelection(kind, delegate);
+        },
+      ),
     );
   }
 
@@ -1183,12 +1187,13 @@ class _DocumentReaderState extends State<DocumentReader> {
                 Icons.fullscreen,
                 ReaderControlsScope.toggleFullscreenOf(context),
               ),
-              if (!epub)
-                action(
-                  'Display mode',
-                  Icons.chrome_reader_mode_outlined,
-                  _displayModes,
-                ),
+              action(
+                'Display mode',
+                Icons.chrome_reader_mode_outlined,
+                epub
+                    ? () => epubReader.currentState?.showDisplayModes()
+                    : _displayModes,
+              ),
               action(
                 'Share',
                 Icons.share_outlined,
@@ -1444,6 +1449,23 @@ class _DocumentReaderState extends State<DocumentReader> {
         enableSelectionHandles: tool == MarkTool.browse,
       ),
       buildContextMenu: _selectionMenu,
+      linkHandlerParams: tool == MarkTool.browse
+          ? PdfLinkHandlerParams(
+              onLinkTap: (link) async {
+                final opened = await followPdfLink(
+                  link,
+                  goToDestination: (dest) => viewer.goToDest(dest),
+                );
+                if (!opened && mounted && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('This link target could not be opened.'),
+                    ),
+                  );
+                }
+              },
+            )
+          : null,
       onViewerReady: (document, controller) {
         if (mounted) setState(() {});
         WidgetsBinding.instance.addPostFrameCallback((_) {

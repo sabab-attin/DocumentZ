@@ -83,7 +83,10 @@ class _ReaderShellState extends State<ReaderShell> {
               MaterialPageRoute(
                 builder: (_) => Scaffold(
                   appBar: AppBar(title: const Text('Settings')),
-                  body: SettingsScreen(preferences: widget.preferences),
+                  body: SettingsScreen(
+                    preferences: widget.preferences,
+                    repository: repository,
+                  ),
                 ),
               ),
             ),

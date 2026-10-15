@@ -46,9 +46,14 @@ class ShelfOrderData {
 }
 
 class ShelfPreferences extends ChangeNotifier {
-  ShelfPreferences(this.scope, {bool recent = false})
-    : sort = recent ? ShelfSort.opened : ShelfSort.name,
-      descending = recent;
+  ShelfPreferences(this.scope, {bool recent = false, this.newestFirst = false})
+    : sort = newestFirst
+          ? ShelfSort.modified
+          : recent
+          ? ShelfSort.opened
+          : ShelfSort.name,
+      descending = newestFirst || recent;
+  final bool newestFirst;
   final String scope;
   ShelfView view = ShelfView.medium;
   ShelfSort sort;
@@ -72,7 +77,17 @@ class ShelfPreferences extends ChangeNotifier {
       );
       descending = storage.getBool(_key('descending')) ?? descending;
       groupByType = storage.getBool(_key('group')) ?? groupByType;
-      notifyListeners();
+      // Apply the new Browse default once, then retain later user choices.
+      if (newestFirst && storage.getBool(_key('newestFirst.v1')) != true) {
+        await choose(
+          sort: ShelfSort.modified,
+          descending: true,
+          groupByType: false,
+        );
+        await storage.setBool(_key('newestFirst.v1'), true);
+      } else {
+        notifyListeners();
+      }
     } catch (_) {
       /* Views still work for this session. */
     }

@@ -1,6 +1,8 @@
 package com.example.documentz
 
 import android.os.Build
+import android.net.wifi.WifiManager
+import android.content.Context
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.view.View
@@ -18,6 +20,9 @@ import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private var immersiveReader = false
+    private var syncMulticastLock: WifiManager.MulticastLock? = null
+    private var networkResult: MethodChannel.Result? = null
+    private val networkRequest = 8437
     private val iconAliases = mapOf(
         "classic" to "com.example.documentz.LauncherClassic",
         "kawaii" to "com.example.documentz.LauncherKawaii",
@@ -26,12 +31,40 @@ class MainActivity : FlutterActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private var folderResult: MethodChannel.Result? = null
     private val folderRequest = 8432
+    private val storageAccess by lazy { DeviceStorageAccess(this) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "documentz/appearance").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
+                    "localSyncDiscovery" -> {
+                        if (call.argument<Boolean>("enabled") == true) {
+                            if (syncMulticastLock?.isHeld != true) {
+                                val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                                syncMulticastLock = wifi?.createMulticastLock("DocumentZ local sync")?.apply {
+                                    setReferenceCounted(false)
+                                    acquire()
+                                }
+                            }
+                        } else {
+                            if (syncMulticastLock?.isHeld == true) syncMulticastLock?.release()
+                            syncMulticastLock = null
+                        }
+                        result.success(null)
+                    }
+                    "localNetworkAccess" -> {
+                        val permission = "android.permission.ACCESS_LOCAL_NETWORK"
+                        if (Build.VERSION.SDK_INT < 37 || applicationInfo.targetSdkVersion < 37 ||
+                            checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+                            result.success(true)
+                        } else if (networkResult != null) {
+                            result.error("busy", "A local network permission request is already open.", null)
+                        } else {
+                            networkResult = result
+                            requestPermissions(arrayOf(permission), networkRequest)
+                        }
+                    }
                     "fullscreen" -> {
                         immersiveReader = call.argument<Boolean>("enabled") == true
                         applyReaderSystemBars()
@@ -73,6 +106,7 @@ class MainActivity : FlutterActivity() {
             } catch (e: Exception) { result.error("appearance", "Could not update appearance", null) }
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "documentz/device_documents").setMethodCallHandler { call, result ->
+            if (storageAccess.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "addFolder" -> {
                     if (folderResult != null) { result.error("busy", "Folder picker already open", null) }
@@ -101,6 +135,11 @@ class MainActivity : FlutterActivity() {
                             val files = linkedMapOf<String, Map<String, Any>>()
                             val errors = mutableListOf<String>()
                             val folders = contentResolver.persistedUriPermissions.filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }.map { it.uri.toString() }
+                            if (storageAccess.allowed()) {
+                                val local = storageAccess.scan(extensions).map { storageAccess.connectedIdentity(it, folders) }
+                                runOnUiThread { result.success(mapOf("files" to local, "folders" to folders, "errors" to emptyList<String>())) }
+                                return@execute
+                            }
                             for (folder in folders) {
                                 val tree = Uri.parse(folder)
                                 val queue = java.util.ArrayDeque<String>()
@@ -130,7 +169,15 @@ class MainActivity : FlutterActivity() {
                                     } catch (e: Exception) { errors.add(folder) }
                                 }
                             }
-                            runOnUiThread { result.success(mapOf("files" to files.values.toList(), "folders" to folders, "errors" to errors.distinct())) }
+                            val shared = storageAccess.scan(extensions)
+                            // Keep existing SAF identities so linked notes and imported copies stay connected.
+                            val connectedPaths = files.values.mapNotNull { item ->
+                                storageAccess.sharedPath(Uri.parse(item["uri"] as String))
+                            }.toSet()
+                            val merged = files.values.toList() + shared.filter {
+                                !connectedPaths.contains(Uri.parse(it["uri"] as String).path)
+                            }
+                            runOnUiThread { result.success(mapOf("files" to merged, "folders" to folders, "errors" to errors.distinct())) }
                         } catch (e: Exception) { runOnUiThread { result.error("scan", e.message, null) } }
                     }
                 }
@@ -138,12 +185,13 @@ class MainActivity : FlutterActivity() {
                     worker.execute {
                     try {
                         val uri = Uri.parse(call.argument<String>("uri") ?: throw IllegalArgumentException("Missing URI"))
-                        require(uri.scheme == "content") { "Expected a document URI" }
+                        require(uri.scheme == "content" || uri.scheme == "file") { "Expected a document URI" }
                         val name = call.argument<String>("name") ?: throw IllegalArgumentException("Missing name")
                         require(name.isNotBlank() && !name.contains('/') && !name.contains('\\')) { "Invalid name" }
-                        val changed = DocumentsContract.renameDocument(contentResolver, uri, name)
-                            ?: throw IllegalStateException("Provider refused rename")
-                        runOnUiThread { result.success(changed.toString()) }
+                        val changed = if (uri.scheme == "file") storageAccess.rename(uri, name) else
+                            (DocumentsContract.renameDocument(contentResolver, uri, name)
+                                ?: throw IllegalStateException("Provider refused rename")).toString()
+                        runOnUiThread { result.success(changed) }
                     } catch (e: Exception) { runOnUiThread { result.error("permission", "Could not rename. Reconnect the folder and allow write access.", null) } }
                     }
                 }
@@ -151,8 +199,9 @@ class MainActivity : FlutterActivity() {
                     worker.execute {
                     try {
                         val uri = Uri.parse(call.argument<String>("uri") ?: throw IllegalArgumentException("Missing URI"))
-                        require(uri.scheme == "content") { "Expected a document URI" }
-                        if (!DocumentsContract.deleteDocument(contentResolver, uri)) throw IllegalStateException("Provider refused deletion")
+                        require(uri.scheme == "content" || uri.scheme == "file") { "Expected a document URI" }
+                        if (uri.scheme == "file") storageAccess.delete(uri)
+                        else if (!DocumentsContract.deleteDocument(contentResolver, uri)) throw IllegalStateException("Provider refused deletion")
                         runOnUiThread { result.success(null) }
                     } catch (e: Exception) { runOnUiThread { result.error("permission", "Could not delete. Reconnect the folder and allow write access.", null) } }
                     }
@@ -163,9 +212,9 @@ class MainActivity : FlutterActivity() {
                     worker.execute {
                         try {
                             val parsed = Uri.parse(uri ?: throw IllegalArgumentException("Missing URI"))
-                            if (parsed.scheme != "content") throw IllegalArgumentException("Expected a document URI")
+                            if (parsed.scheme != "content" && parsed.scheme != "file") throw IllegalArgumentException("Expected a document URI")
                             val output = ByteArrayOutputStream()
-                            contentResolver.openInputStream(parsed)?.use { input ->
+                            (if (parsed.scheme == "file") storageAccess.read(parsed) else contentResolver.openInputStream(parsed))?.use { input ->
                                 val buffer = ByteArray(65536)
                                 while (true) {
                                     val count = input.read(buffer)
@@ -207,15 +256,31 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        if (syncMulticastLock?.isHeld == true) syncMulticastLock?.release()
+        syncMulticastLock = null
+        networkResult?.success(false)
+        networkResult = null
+        storageAccess.close()
         folderResult?.success(false)
         folderResult = null
         worker.shutdown()
         super.onDestroy()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == networkRequest) {
+            networkResult?.success(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
+            networkResult = null
+            return
+        }
+        storageAccess.permissionResult(requestCode)
+    }
+
     @Deprecated("Uses FlutterActivity result forwarding")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (storageAccess.activityResult(requestCode)) return
         if (requestCode != folderRequest) return
         val result = folderResult ?: return
         folderResult = null

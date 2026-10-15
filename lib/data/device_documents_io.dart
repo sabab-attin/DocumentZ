@@ -8,10 +8,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'device_documents_model.dart';
 import 'import_validation.dart';
+import 'browse_formats.dart';
 export 'device_documents_model.dart';
 
 const _channel = MethodChannel('documentz/device_documents');
 const _foldersKey = 'documentz.deviceFolders.v1';
+Future<bool> hasDeviceStorageAccess() async =>
+    Platform.isAndroid &&
+    (await _channel.invokeMethod<bool>('storageAccess') ?? false);
+Future<bool> requestDeviceStorageAccess() async =>
+    Platform.isAndroid &&
+    (await _channel.invokeMethod<bool>('requestStorageAccess') ?? false);
+bool get supportsDeviceStorageAccess => Platform.isAndroid;
 Future<bool> addDeviceFolder() async {
   if (Platform.isAndroid) {
     return await _channel.invokeMethod<bool>('addFolder') ?? false;
@@ -41,7 +49,7 @@ Future<void> removeDeviceFolder(String folder) async {
 Future<DeviceScan> scanDeviceDocuments() async {
   if (Platform.isAndroid) {
     final raw = await _channel.invokeMapMethod<String, dynamic>('scan', {
-      'extensions': documentExtensions,
+      'extensions': browseDocumentExtensions,
     });
     final documents = (raw?['files'] as List? ?? [])
         .map(
@@ -53,6 +61,7 @@ Future<DeviceScan> scanDeviceDocuments() async {
             modified: (e['modified'] as num?)?.toInt() ?? 0,
           ),
         )
+        .where((doc) => isBrowseDocumentName(doc.name))
         .toList();
     return DeviceScan(
       documents,
@@ -79,9 +88,7 @@ Future<DeviceScan> scanDeviceDocuments() async {
         }
         if (entry is File) {
           final name = entry.path.replaceAll('\\', '/').split('/').last;
-          if (!documentExtensions.contains(
-            name.split('.').last.toLowerCase(),
-          )) {
+          if (!isBrowseDocumentName(name)) {
             continue;
           }
           try {

@@ -173,42 +173,48 @@ class _PdfPagePickerState extends State<PdfPagePicker> {
                   ),
                 Expanded(
                   child: grid
-                      ? GridView.builder(
-                          padding: const EdgeInsets.all(12),
-                          gridDelegate:
-                              const SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 180,
-                                childAspectRatio: .65,
-                                mainAxisSpacing: 12,
-                                crossAxisSpacing: 12,
-                              ),
-                          itemCount: pages.length,
-                          itemBuilder: (context, i) => Card.outlined(
-                            child: InkWell(
-                              onTap: () => show(i),
-                              child: Column(
-                                children: [
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: PdfThumbnail(
-                                        key: ValueKey(i),
-                                        page: pages[i],
+                      ? LayoutBuilder(
+                          builder: (context, constraints) => GridView.builder(
+                            padding: const EdgeInsets.all(12),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: pdfPreviewColumns(
+                                    constraints.maxWidth,
+                                  ),
+                                  childAspectRatio: .65,
+                                  mainAxisSpacing: 12,
+                                  crossAxisSpacing: 12,
+                                ),
+                            itemCount: pages.length,
+                            itemBuilder: (context, i) => Card.outlined(
+                              child: InkWell(
+                                onTap: () => show(i),
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: PdfThumbnail(
+                                          key: ValueKey(i),
+                                          page: pages[i],
+                                          renderWidth: 700,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (widget.multiple)
-                                        Checkbox(
-                                          value: chosen.contains(i),
-                                          onChanged: (_) => toggle(i),
-                                        ),
-                                      Text('Page ${i + 1}'),
-                                    ],
-                                  ),
-                                ],
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        if (widget.multiple)
+                                          Checkbox(
+                                            value: chosen.contains(i),
+                                            onChanged: (_) => toggle(i),
+                                          ),
+                                        Text('Page ${i + 1}'),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -222,10 +228,16 @@ class _PdfPagePickerState extends State<PdfPagePicker> {
                           }),
                           itemBuilder: (context, i) => Padding(
                             padding: const EdgeInsets.all(16),
-                            child: PdfThumbnail(
-                              key: ValueKey('preview:$i'),
-                              page: pages[i],
-                              renderWidth: 800,
+                            child: InteractiveViewer(
+                              minScale: 1,
+                              maxScale: 5,
+                              child: SizedBox.expand(
+                                child: PdfThumbnail(
+                                  key: ValueKey('preview:$i'),
+                                  page: pages[i],
+                                  renderWidth: 1600,
+                                ),
+                              ),
                             ),
                           ),
                         ),

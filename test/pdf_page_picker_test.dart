@@ -104,6 +104,8 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
     final checks = find.byType(Checkbox);
+    await tester.ensureVisible(checks.at(1));
+    await tester.pumpAndSettle();
     await tester.tap(checks.at(1));
     await tester.tap(checks.at(3));
     await tester.pump();

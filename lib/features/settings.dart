@@ -1,3 +1,7 @@
+import '../domain/services.dart';
+import '../data/local_annotation_sync.dart';
+import 'annotation_sync_screen.dart';
+
 import 'package:flutter/material.dart';
 
 import '../core/preferences.dart';
@@ -10,9 +14,11 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.preferences,
     this.showTextOptions = true,
+    this.repository,
   });
   final ReaderPreferences preferences;
   final bool showTextOptions;
+  final LibraryRepository? repository;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -82,6 +88,24 @@ class SettingsScreen extends StatelessWidget {
             showText: showTextOptions,
           ),
           if (!preferences.documentSpecific) const AppIconSettings(),
+          if (!preferences.documentSpecific &&
+              localSyncAvailable &&
+              repository is ImportableLibrary)
+            Card.outlined(
+              child: ListTile(
+                leading: const Icon(Icons.sync),
+                title: const Text('Annotation sync'),
+                subtitle: const Text('Pair devices over local Wi-Fi'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                    builder: (_) => AnnotationSyncScreen(
+                      repository: repository as ImportableLibrary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (preferences.saveFailed)
             const Text(
               'Preferences work for this session, but could not be saved on this device.',

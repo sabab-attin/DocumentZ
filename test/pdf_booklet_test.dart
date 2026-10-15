@@ -179,6 +179,18 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byType(DropdownButtonFormField<int>).first,
+            )
+            .initialValue,
+        0,
+      );
+      expect(
+        find.textContaining('Printing tip: Choose both sides'),
+        findsOneWidget,
+      );
       expect(find.text('Left: Page 4'), findsOneWidget);
       expect(find.text('Right: Page 1'), findsOneWidget);
       expect(await library.listBooks(), isEmpty);

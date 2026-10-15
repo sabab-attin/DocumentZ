@@ -5,7 +5,7 @@ The file picker, stored library metadata, reader routing, and sharing recognize 
 | Formats | Reading on Android, Windows and web | Windows conversion |
 | --- | --- | --- |
 | PDF; PDF/A, PDF/X, PDF/E, PDF/UA files | Existing PDF reader renders supported 2D page content, text, images and links. | No conversion needed. |
-| EPUB | Existing reflowable chapter reader, embedded raster images, search, contents and text marks. | No conversion needed. |
+| EPUB | Reflowable single pages, two-page spreads or continuous reading; embedded images, search, chapter and footnote links, contents and text marks. | No conversion needed. |
 | DOCX | Text, basic bold/italic/underline/strike, tables and embedded raster images. | LibreOffice supplies a PDF page layout. |
 | XLSX | Named sheets, sparse cell positions, shared/inline strings, cached values and formula text where cached results are absent. | LibreOffice supplies a printable PDF. |
 | PPTX | Slide order, text and embedded raster images in a reading view. | LibreOffice supplies a PDF slide layout. |
@@ -18,7 +18,7 @@ The file picker, stored library metadata, reader routing, and sharing recognize 
 | TIFF, TIF | All decoded scan pages, swipe navigation and zoom. | Not required. |
 | SVG | SVG rendering with zoom; original colors retained. | Not required. |
 | DOC, XLS, PPT | Imported originals are kept. Convert on Windows and share the resulting PDF to Android/web. | LibreOffice required. |
-| MOBI | Imported originals are kept. Convert on Windows and share the resulting PDF. | Calibre required; DRM-protected books are not supported. |
+| MOBI | Classic, unencrypted MOBI with uncompressed or PalmDOC text, embedded images and file-position links. Uses the paginated ebook reader. | HUFF/CDIC, KF8 and unsupported encodings require Calibre conversion on Windows. DRM is unsupported. |
 | EPS, PS | Imported originals are kept. Convert on Windows and share the resulting PDF. | Ghostscript required. |
 
 ## Local Windows conversion

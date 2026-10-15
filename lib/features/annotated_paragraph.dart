@@ -1,3 +1,8 @@
+import 'ebook_box_layout.dart';
+
+import 'dart:typed_data';
+
+import 'ebook_styles.dart';
 import 'continuous_marks.dart';
 
 import 'package:flutter/material.dart';
@@ -13,7 +18,15 @@ import 'selection_panel.dart';
 const _blocks = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,th,div';
 
 /// Stable IDs tie EPUB ranges to source paragraphs rather than screen coordinates.
-String prepareSelectableMarkup(String source) {
+String prepareSelectableMarkup(
+  String source, {
+  String path = '',
+  Map<String, Uint8List> resources = const {},
+  double? availableWidth,
+  String? frameInk,
+  TextStyle readerStyle = const TextStyle(fontSize: 20),
+  TextScaler textScaler = TextScaler.noScaling,
+}) {
   final document = html.parse(source);
   final blocks = document.querySelectorAll(_blocks);
   for (int index = 0; index < blocks.length; index++) {
@@ -26,7 +39,25 @@ String prepareSelectableMarkup(String source) {
     }
     element.attributes['data-qr-block'] = '$index';
   }
-  return document.body?.innerHtml ?? source;
+  applyEbookStyles(document, path, resources);
+  prepareEbookBoxes(
+    document,
+    availableWidth: availableWidth,
+    style: readerStyle,
+    textScaler: textScaler,
+  );
+  document.body?.attributes['data-book-root'] = '1';
+  if (frameInk != null) {
+    applyPreparedFrameTheme(document, frameInk);
+  }
+  final body = document.body;
+  if (body == null) {
+    return source;
+  }
+  final wrapper = dom.Element.tag('div')..attributes.addAll(body.attributes);
+  wrapper.attributes['data-book-root'] = '1';
+  wrapper.nodes.addAll(body.nodes.toList());
+  return wrapper.outerHtml;
 }
 
 class ParagraphRun {
@@ -36,13 +67,23 @@ class ParagraphRun {
   final String? link;
 }
 
-List<ParagraphRun> paragraphRuns(dom.Element element) {
+List<ParagraphRun> paragraphRuns(
+  dom.Element element, [
+  TextStyle baseStyle = const TextStyle(fontSize: 20),
+]) {
   final runs = <ParagraphRun>[];
   void visit(dom.Node node, TextStyle style, String? link) {
     if (node is dom.Text) {
-      final text = element.localName == 'pre'
+      final whitespace = ebookStyle(node.parent ?? element)['white-space'];
+      final text =
+          element.localName == 'pre' ||
+              whitespace == 'pre' ||
+              whitespace == 'pre-wrap' ||
+              whitespace == 'break-spaces'
           ? node.data
-          : node.data.replaceAll(RegExp(r'\s+'), ' ');
+          : whitespace == 'pre-line'
+          ? node.data.replaceAll(RegExp(r'[ \t\f]+'), ' ')
+          : node.data.replaceAll(RegExp(r'[ \t\r\n\f]+'), ' ');
       if (text.isNotEmpty) runs.add(ParagraphRun(text, style, link));
     } else if (node is dom.Element) {
       if (node.localName == 'br') {
@@ -62,6 +103,7 @@ List<ParagraphRun> paragraphRuns(dom.Element element) {
       if (node.localName == 'a') {
         next = next.copyWith(decoration: TextDecoration.underline);
       }
+      next = next.merge(ebookTextStyle(node, baseStyle));
       for (final child in node.nodes) {
         visit(child, next, node.attributes['href'] ?? link);
       }
@@ -196,10 +238,12 @@ class AnnotatedParagraph extends StatefulWidget {
     this.searchOffset,
     this.gestureSession,
     this.textAlign = TextAlign.start,
+    this.fallbackWidth,
   });
   final String searchQuery;
   final int? searchOffset;
   final TextAlign textAlign;
+  final double? fallbackWidth;
   final MarkTool activeTool;
   final ReaderGestureSession? gestureSession;
   final int? color;
@@ -232,7 +276,7 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
       link.dispose();
     }
     links.clear();
-    runs = paragraphRuns(widget.element);
+    runs = paragraphRuns(widget.element, widget.style);
     for (final href in runs.map((r) => r.link).whereType<String>().toSet()) {
       links[href] = TapGestureRecognizer()..onTap = () => widget.onLink(href);
     }
@@ -242,7 +286,8 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
   void didUpdateWidget(covariant AnnotatedParagraph oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.block != widget.block ||
-        oldWidget.element.outerHtml != widget.element.outerHtml) {
+        oldWidget.element.outerHtml != widget.element.outerHtml ||
+        oldWidget.style != widget.style) {
       _prepare();
     }
   }
@@ -331,31 +376,54 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
           offset += query.length;
         }
       }
-      final tag = widget.element.localName ?? '';
-      final heading = RegExp(r'^h[1-6]$').hasMatch(tag);
-      final level = heading ? int.parse(tag.substring(1)) : 0;
       final fontSize = widget.style.fontSize ?? 20;
-      final style = heading
-          ? widget.style.copyWith(
-              fontSize:
-                  fontSize *
-                  (level == 1
-                      ? 1.65
-                      : level == 2
-                      ? 1.35
-                      : 1.15),
-              height: 1.3,
-              fontWeight: FontWeight.w600,
-            )
-          : tag == 'pre'
-          ? widget.style.copyWith(fontFamily: 'monospace', height: 1.5)
-          : widget.style;
-      return Padding(
-        padding: EdgeInsets.only(
-          top: heading ? fontSize * .65 : 0,
-          bottom: fontSize * (heading ? .65 : .6),
-          left: tag == 'blockquote' ? 20 : 0,
-        ),
+      final style = ebookTextStyle(widget.element, widget.style, block: true);
+      final textAlign = ebookAlignment(widget.element, widget.textAlign);
+      final direction = ebookDirection(
+        widget.element,
+        Directionality.of(context),
+      );
+      final insets = widget.element.attributes['data-book-framed'] == '1'
+          ? EdgeInsets.zero
+          : ebookParagraphInsets(widget.element, style.fontSize ?? fontSize);
+      final indent = ebookLength(
+        ebookStyle(widget.element)['text-indent'],
+        style.fontSize ?? fontSize,
+      ).clamp(0.0, fontSize * 4).toDouble();
+      // A presentation-only space creates the first-line inset. Annotation
+      // ranges are translated for display, never changed in storage or sync.
+      final prefix = indent > 0 && textAlign != TextAlign.center ? 1 : 0;
+      final displayRuns = <ParagraphRun>[
+        if (prefix != 0)
+          ParagraphRun(
+            '\u200a',
+            TextStyle(fontSize: .01, letterSpacing: indent),
+            null,
+          ),
+        ...runs,
+      ];
+      final displayMarks = prefix == 0
+          ? marks
+          : [
+              for (final mark in marks)
+                DocumentMark.fromJson({
+                  ...mark.toJson(),
+                  'start': mark.start + prefix,
+                  'end': mark.end + prefix,
+                }),
+            ];
+      final sourceLength = runs.fold<int>(0, (n, r) => n + r.text.length);
+      TextSelection sourceSelection(TextSelection value) => !value.isValid
+          ? value
+          : TextSelection(
+              baseOffset: (value.baseOffset - prefix).clamp(0, sourceLength),
+              extentOffset: (value.extentOffset - prefix).clamp(
+                0,
+                sourceLength,
+              ),
+            );
+      final content = Padding(
+        padding: insets,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -364,8 +432,8 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                 final spans = TextSpan(
                   style: DefaultTextStyle.of(context).style.merge(style),
                   children: markedParagraphSpans(
-                    runs,
-                    marks,
+                    displayRuns,
+                    displayMarks,
                     recognizers: links,
                     noteRecognizers: noteLinks,
                     paintAnnotations: false,
@@ -373,8 +441,8 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                 );
                 final painter = TextPainter(
                   text: spans,
-                  textAlign: widget.textAlign,
-                  textDirection: Directionality.of(context),
+                  textAlign: textAlign,
+                  textDirection: direction,
                   textScaler: MediaQuery.textScalerOf(context),
                 )..layout(maxWidth: constraints.maxWidth);
                 final searchOffset = widget.searchOffset;
@@ -389,8 +457,9 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                   _revealedOffset = searchOffset;
                   final boxes = painter.getBoxesForSelection(
                     TextSelection(
-                      baseOffset: searchOffset,
-                      extentOffset: searchOffset + widget.searchQuery.length,
+                      baseOffset: searchOffset + prefix,
+                      extentOffset:
+                          searchOffset + widget.searchQuery.length + prefix,
                     ),
                   );
                   if (boxes.isNotEmpty) {
@@ -427,7 +496,10 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                   }
                 }
                 int position(Offset p) =>
-                    painter.getPositionForOffset(p).offset;
+                    (painter.getPositionForOffset(p).offset - prefix).clamp(
+                      0,
+                      sourceLength,
+                    );
                 final active = [
                   MarkTool.highlight,
                   MarkTool.underline,
@@ -441,8 +513,8 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                         child: CustomPaint(
                           painter: ParagraphMarkPainter(
                             painter,
-                            marks,
-                            runs.map((r) => r.text).join(),
+                            displayMarks,
+                            displayRuns.map((r) => r.text).join(),
                             foreground: false,
                           ),
                         ),
@@ -453,17 +525,18 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                       child: SelectableText.rich(
                         TextSpan(
                           children: markedParagraphSpans(
-                            runs,
-                            marks,
+                            displayRuns,
+                            displayMarks,
                             recognizers: links,
                             noteRecognizers: noteLinks,
                             paintAnnotations: false,
                           ),
                         ),
                         style: style,
-                        textAlign: widget.textAlign,
+                        textAlign: textAlign,
+                        textDirection: direction,
                         onSelectionChanged: (value, cause) {
-                          selection = value;
+                          selection = sourceSelection(value);
                           widget.onSelection(annotate);
                         },
                         contextMenuBuilder: (context, editable) =>
@@ -484,8 +557,8 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                         child: CustomPaint(
                           painter: ParagraphMarkPainter(
                             painter,
-                            marks,
-                            runs.map((r) => r.text).join(),
+                            displayMarks,
+                            displayRuns.map((r) => r.text).join(),
                             foreground: true,
                           ),
                         ),
@@ -529,7 +602,13 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                           child: CustomPaint(
                             painter: _SelectionPreview(
                               painter
-                                  .getBoxesForSelection(selection)
+                                  .getBoxesForSelection(
+                                    TextSelection(
+                                      baseOffset: selection.baseOffset + prefix,
+                                      extentOffset:
+                                          selection.extentOffset + prefix,
+                                    ),
+                                  )
                                   .map((box) => box.toRect())
                                   .toList(),
                               Theme.of(context).colorScheme.primary,
@@ -554,6 +633,48 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
               ),
           ],
         ),
+      );
+      // Native table layout probes cells with unbounded width before assigning
+      // columns. Never pass that infinity into the stretched selectable column.
+      return LayoutBuilder(
+        builder: (context, bounds) {
+          final fallback =
+              widget.fallbackWidth ?? MediaQuery.sizeOf(context).width;
+          final width = bounds.hasBoundedWidth
+              ? bounds.maxWidth
+              : fallback.clamp(1.0, double.infinity).toDouble();
+          if (widget.element.attributes['data-book-fit-label'] == '1') {
+            final label = TextPainter(
+              text: TextSpan(
+                style: style,
+                children: [
+                  for (final run in runs)
+                    TextSpan(text: run.text, style: run.style),
+                ],
+              ),
+              textDirection: direction,
+              textScaler: MediaQuery.textScalerOf(context),
+            )..layout();
+            final natural = label.maxIntrinsicWidth + insets.horizontal + 12;
+            label.dispose();
+            return ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: width),
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: 1,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(width: natural, child: content),
+                ),
+              ),
+            );
+          }
+          return ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: width),
+            child: content,
+          );
+        },
       );
     },
   );

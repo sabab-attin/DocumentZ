@@ -82,7 +82,7 @@ void main() {
   );
 
   testWidgets(
-    'sideways EPUB turns advance a viewport before changing chapters',
+    'sideways EPUB turns advance fixed pages before changing chapters',
     (tester) async {
       final key = GlobalKey<EpubReaderState>();
       final annotations = AnnotationStore('paging');
@@ -119,14 +119,16 @@ void main() {
       );
       await tester.pumpAndSettle();
       final state = key.currentState!;
-      final viewport = state.scroll.position.viewportDimension;
+      expect(state.displayMode, 'Single page');
+      expect(state.scroll.hasClients, isFalse);
+      expect(state.bookPages.count, greaterThan(1));
       await state.turnSection(1);
       await tester.pumpAndSettle();
       expect(state.section, 0);
-      expect(state.scroll.offset, closeTo(viewport, 1));
+      expect(state.bookPages.page, 1);
       await state.turnSection(-1);
       await tester.pumpAndSettle();
-      expect(state.scroll.offset, 0);
+      expect(state.bookPages.page, 0);
       expect(tester.takeException(), isNull);
     },
   );

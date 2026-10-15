@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="external" path="Pictures/"/>
+    <exclude domain="sharedpref" path="documentz_sync.xml"/>
+    <exclude domain="sharedpref" path="FlutterSecureKeyStorage:documentz_sync.xml"/>
+</full-backup-content>

@@ -29,7 +29,7 @@ class BookletCreator extends StatefulWidget {
 }
 
 class _BookletCreatorState extends State<BookletCreator> {
-  int perBooklet = 16;
+  int perBooklet = 0;
   int selected = 0;
   int side = 0;
   int generation = 0;
@@ -102,6 +102,25 @@ class _BookletCreatorState extends State<BookletCreator> {
     _preview();
   }
 
+  Widget _printingTip(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Icon(
+        Icons.lightbulb_outline,
+        size: 16,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      const SizedBox(width: 6),
+      Expanded(
+        child: Text(
+          'Printing tip: Choose both sides · Flip on the short edge.\nActual size · One PDF page per sheet side.',
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ),
+    ],
+  );
+
   String _page(int? index) => index == null ? 'Blank' : 'Page ${index + 1}';
   String _sideLabel(int index) =>
       'Sheet ${index ~/ 2 + 1} · ${index.isEven ? 'Front' : 'Back'}';
@@ -165,7 +184,9 @@ class _BookletCreatorState extends State<BookletCreator> {
                   const SizedBox(height: 8),
                   Text(output.name),
                   Text(
-                    output.isZip ? 'Separate PDF booklets, packaged in a ZIP.' : 'One PDF with the front and back sides in printing order.',
+                    output.isZip
+                        ? 'ZIP · Separate booklets'
+                        : 'PDF · Ready to print',
                   ),
                   const SizedBox(height: 12),
                   ListTile(
@@ -207,11 +228,7 @@ class _BookletCreatorState extends State<BookletCreator> {
                       },
                     ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Print at actual size with one PDF page per sheet side. '
-                    'For landscape sheets, use duplex printing with short-edge flip. '
-                    'Test one sheet before printing the whole booklet.',
-                  ),
+                  _printingTip(sheet),
                 ],
               ),
             ),
@@ -322,6 +339,8 @@ class _BookletCreatorState extends State<BookletCreator> {
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
+                          const SizedBox(height: 8),
+                          _printingTip(context),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<int>(
                             key: ValueKey('size-$perBooklet'),

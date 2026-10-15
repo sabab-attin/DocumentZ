@@ -148,7 +148,9 @@ class _FormatReaderState extends State<FormatReader> {
   bool get image =>
       rasterFormats.contains(widget.book.format) ||
       widget.book.format == BookFormat.svg;
-  bool get legacy => conversionFormats.contains(widget.book.format);
+  bool get legacy =>
+      conversionFormats.contains(widget.book.format) &&
+      widget.book.format != BookFormat.mobi;
   @override
   void dispose() {
     _imageZoom.dispose();
@@ -503,6 +505,14 @@ class _FormatReaderState extends State<FormatReader> {
                   epub.currentState?.toggleContents();
                 },
               ),
+              ReaderMenuAction(
+                label: 'Display mode',
+                icon: Icons.chrome_reader_mode_outlined,
+                onTap: () {
+                  ReaderControlsScope.of(context)?.value = false;
+                  epub.currentState?.showDisplayModes();
+                },
+              ),
               TextAlignmentMenu(preferences: widget.preferences),
               ReaderMenuAction(
                 label: 'Colors',
@@ -537,7 +547,8 @@ class _FormatReaderState extends State<FormatReader> {
                 ),
               if (supportsLocalConversion &&
                   (officeArchiveFormats.contains(widget.book.format) ||
-                      widget.book.format == BookFormat.rtf))
+                      widget.book.format == BookFormat.rtf ||
+                      widget.book.format == BookFormat.mobi))
                 ReaderMenuAction(
                   label: converting ? 'Converting…' : 'PDF layout',
                   icon: Icons.picture_as_pdf_outlined,
@@ -586,6 +597,7 @@ class _FormatReaderState extends State<FormatReader> {
           Positioned.fill(
             child: EpubReader(
               key: epub,
+              paperTexture: widget.book.format == BookFormat.mobi,
               bytes: bytes,
               parsedDocument: document,
               preferences: widget.preferences,

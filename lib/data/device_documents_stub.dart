@@ -19,3 +19,7 @@ Future<void> deleteDeviceDocument(DeviceDocument document) async =>
     throw const FormatException(
       'Device files cannot be deleted in this browser.',
     );
+
+bool get supportsDeviceStorageAccess => false;
+Future<bool> hasDeviceStorageAccess() async => false;
+Future<bool> requestDeviceStorageAccess() async => false;

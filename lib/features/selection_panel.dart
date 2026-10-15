@@ -1,3 +1,7 @@
+import '../data/word_lookup.dart';
+
+import 'dart:math' show min, max;
+
 import 'annotation_color_picker.dart';
 import 'highlighter_icon.dart';
 
@@ -42,6 +46,17 @@ class _SelectionPanelState extends State<SelectionPanel> {
   String colorName = 'Yellow';
   int? customColor;
   bool busy = false;
+  bool lookupAvailable = false;
+  @override
+  void initState() {
+    super.initState();
+    canLookupSelectedWord().then((available) {
+      if (mounted && available) {
+        setState(() => lookupAvailable = true);
+      }
+    });
+  }
+
   String get toolLabel => switch (tool) {
     MarkTool.underline => 'Underline',
     MarkTool.strikethrough => 'Strikethrough',
@@ -105,6 +120,8 @@ class _SelectionPanelState extends State<SelectionPanel> {
             Text(
               label,
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12),
             ),
           ],
@@ -113,7 +130,8 @@ class _SelectionPanelState extends State<SelectionPanel> {
     ),
   );
 
-  Widget _action(String label, IconData icon, VoidCallback? action) => Expanded(
+  Widget _action(String label, IconData icon, VoidCallback? action) => SizedBox(
+    width: 48,
     child: IconButton(
       tooltip: label,
       onPressed: action,
@@ -126,218 +144,273 @@ class _SelectionPanelState extends State<SelectionPanel> {
   );
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.bottomCenter,
-    child: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: 1),
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 160),
-            builder: (context, value, child) => Opacity(
-              opacity: value,
-              child: Transform.scale(
-                scale: .97 + .03 * value,
-                alignment: Alignment.bottomCenter,
-                child: child,
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, bounds) {
+      final media = MediaQuery.of(context);
+      final width = min(
+        media.size.width,
+        bounds.hasBoundedWidth ? bounds.maxWidth : media.size.width,
+      );
+      final height = min(
+        media.size.height,
+        bounds.hasBoundedHeight ? bounds.maxHeight : media.size.height,
+      );
+      return Align(
+        alignment: Alignment.bottomCenter,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: max(0.0, min(480.0, width - 24)),
+                maxHeight: max(
+                  48.0,
+                  height -
+                      media.padding.vertical -
+                      media.viewInsets.bottom -
+                      36,
+                ),
               ),
-            ),
-            child: Material(
-              color: readerPanelColor,
-              elevation: 12,
-              shadowColor: Colors.black54,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-                side: const BorderSide(color: Color(0xff46515a)),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 160),
+                builder: (context, value, child) => Opacity(
+                  opacity: value,
+                  child: Transform.scale(
+                    scale: .97 + .03 * value,
+                    alignment: Alignment.bottomCenter,
+                    child: child,
+                  ),
+                ),
+                child: Material(
+                  color: readerPanelColor,
+                  elevation: 12,
+                  shadowColor: Colors.black54,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    side: const BorderSide(color: Color(0xff46515a)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        _tool(
-                          MarkTool.highlight,
-                          'Highlight',
-                          Icons.border_color,
+                        Row(
+                          children: [
+                            _tool(
+                              MarkTool.highlight,
+                              'Highlight',
+                              Icons.border_color,
+                            ),
+                            const SizedBox(width: 4),
+                            _tool(
+                              MarkTool.underline,
+                              'Underline',
+                              Icons.format_underlined,
+                            ),
+                            const SizedBox(width: 4),
+                            _tool(
+                              MarkTool.strikethrough,
+                              'Strikethrough',
+                              Icons.strikethrough_s,
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        _tool(
-                          MarkTool.underline,
-                          'Underline',
-                          Icons.format_underlined,
-                        ),
-                        const SizedBox(width: 4),
-                        _tool(
-                          MarkTool.strikethrough,
-                          'Strikethrough',
-                          Icons.strikethrough_s,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        for (final entry in selectionColors.entries)
-                          Expanded(
-                            child: Tooltip(
-                              message: entry.key,
-                              child: Semantics(
-                                label: '${entry.key} annotation color',
-                                selected: colorName == entry.key,
-                                button: true,
-                                child: InkResponse(
-                                  onTap: busy
-                                      ? null
-                                      : () {
-                                          final selectedTool = tool;
-                                          setState(() {
-                                            colorName = entry.key;
-                                            customColor = null;
-                                          });
-                                          _run(
-                                            () => widget.onMark(
-                                              selectedTool,
-                                              entry.value,
+                        const SizedBox(height: 8),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 2,
+                          runSpacing: 2,
+                          children: [
+                            for (final entry in selectionColors.entries)
+                              SizedBox(
+                                width: 48,
+                                child: Tooltip(
+                                  message: entry.key,
+                                  child: Semantics(
+                                    label: '${entry.key} annotation color',
+                                    selected: colorName == entry.key,
+                                    button: true,
+                                    child: InkResponse(
+                                      onTap: busy
+                                          ? null
+                                          : () {
+                                              final selectedTool = tool;
+                                              setState(() {
+                                                colorName = entry.key;
+                                                customColor = null;
+                                              });
+                                              _run(
+                                                () => widget.onMark(
+                                                  selectedTool,
+                                                  entry.value,
+                                                ),
+                                              );
+                                            },
+                                      radius: 28,
+                                      child: SizedBox(
+                                        height: 52,
+                                        child: Center(
+                                          child: Container(
+                                            width: 40,
+                                            height: 40,
+                                            decoration: BoxDecoration(
+                                              color: Color(entry.value),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: colorName == entry.key
+                                                    ? Colors.white
+                                                    : Colors.white38,
+                                                width: colorName == entry.key
+                                                    ? 3
+                                                    : 1,
+                                              ),
                                             ),
-                                          );
-                                        },
-                                  radius: 28,
-                                  child: SizedBox(
-                                    height: 52,
-                                    child: Center(
-                                      child: Container(
-                                        width: 40,
-                                        height: 40,
-                                        decoration: BoxDecoration(
-                                          color: Color(entry.value),
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: colorName == entry.key
-                                                ? Colors.white
-                                                : Colors.white38,
-                                            width: colorName == entry.key
-                                                ? 3
-                                                : 1,
+                                            child: colorName == entry.key
+                                                ? ReaderToolIcon(
+                                                    Icons.check,
+                                                    color:
+                                                        Color(
+                                                              entry.value,
+                                                            ).computeLuminance() <
+                                                            .35
+                                                        ? Colors.white
+                                                        : Colors.black,
+                                                    size: 22,
+                                                  )
+                                                : null,
                                           ),
                                         ),
-                                        child: colorName == entry.key
-                                            ? ReaderToolIcon(
-                                                Icons.check,
-                                                color:
-                                                    Color(
-                                                          entry.value,
-                                                        ).computeLuminance() <
-                                                        .35
-                                                    ? Colors.white
-                                                    : Colors.black,
-                                                size: 22,
-                                              )
-                                            : null,
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: busy
-                          ? null
-                          : () async {
-                              final selected = await pickAnnotationColor(
-                                context,
-                                initial: Color(color),
-                              );
-                              if (selected == null || !mounted) return;
-                              setState(() {
-                                customColor = selected.toARGB32();
-                                colorName = 'Custom';
-                              });
-                              await _run(
-                                () => widget.onMark(tool, selected.toARGB32()),
-                              );
-                            },
-                      icon: const Icon(Icons.color_lens_outlined),
-                      label: const Text('Custom color wheel'),
-                    ),
-                    Text(
-                      busy
-                          ? 'Marking…'
-                          : 'Tap a color to ${toolLabel.toLowerCase()}',
-                      style: const TextStyle(
-                        color: readerPanelInk,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const Divider(color: Color(0xff46515a), height: 20),
-                    Row(
-                      children: [
-                        _action(
-                          'Copy',
-                          Icons.copy_outlined,
-                          busy
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: busy
                               ? null
-                              : () => _run(() async {
-                                  await Clipboard.setData(
-                                    ClipboardData(
-                                      text: await widget.readText(),
-                                    ),
+                              : () async {
+                                  final selected = await pickAnnotationColor(
+                                    context,
+                                    initial: Color(color),
                                   );
-                                }),
-                        ),
-                        _action(
-                          'Share',
-                          Icons.share_outlined,
-                          busy ? null : () => _run(_share),
-                        ),
-                        _action(
-                          'Add note',
-                          Icons.add_comment_outlined,
-                          busy
-                              ? null
-                              : () {
-                                  final selectedColor = color;
-                                  _run(
+                                  if (selected == null || !mounted) return;
+                                  setState(() {
+                                    customColor = selected.toARGB32();
+                                    colorName = 'Custom';
+                                  });
+                                  await _run(
                                     () => widget.onMark(
-                                      MarkTool.note,
-                                      selectedColor,
+                                      tool,
+                                      selected.toARGB32(),
                                     ),
                                   );
                                 },
+                          icon: const Icon(Icons.color_lens_outlined),
+                          label: const Text('Custom color wheel'),
                         ),
-                        if (widget.onAnnotate != null)
-                          _action(
-                            'Annotate',
-                            Icons.draw_outlined,
-                            busy
-                                ? null
-                                : () {
-                                    final annotate = widget.onAnnotate!;
-                                    widget.onClose();
-                                    annotate();
-                                  },
+                        Text(
+                          busy
+                              ? 'Marking…'
+                              : 'Tap a color to ${toolLabel.toLowerCase()}',
+                          style: const TextStyle(
+                            color: readerPanelInk,
+                            fontSize: 12,
                           ),
-                        _action('Close', Icons.close, widget.onClose),
+                        ),
+                        const Divider(color: Color(0xff46515a), height: 20),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          children: [
+                            _action(
+                              'Copy',
+                              Icons.copy_outlined,
+                              busy
+                                  ? null
+                                  : () => _run(() async {
+                                      await Clipboard.setData(
+                                        ClipboardData(
+                                          text: await widget.readText(),
+                                        ),
+                                      );
+                                    }),
+                            ),
+                            if (lookupAvailable)
+                              _action(
+                                'Look up',
+                                Icons.manage_search_outlined,
+                                busy
+                                    ? null
+                                    : () => _run(() async {
+                                        final text = await widget.readText();
+                                        final opened = await lookupSelectedWord(
+                                          text,
+                                        );
+                                        if (!opened &&
+                                            mounted &&
+                                            context.mounted) {
+                                          ScaffoldMessenger.maybeOf(context)
+                                              ?.showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'In-app lookup is unavailable. Select a word or short phrase and check browser support.',
+                                                  ),
+                                                ),
+                                              );
+                                        }
+                                      }),
+                              ),
+                            _action(
+                              'Share',
+                              Icons.share_outlined,
+                              busy ? null : () => _run(_share),
+                            ),
+                            _action(
+                              'Add note',
+                              Icons.add_comment_outlined,
+                              busy
+                                  ? null
+                                  : () {
+                                      final selectedColor = color;
+                                      _run(
+                                        () => widget.onMark(
+                                          MarkTool.note,
+                                          selectedColor,
+                                        ),
+                                      );
+                                    },
+                            ),
+                            if (widget.onAnnotate != null)
+                              _action(
+                                'Annotate',
+                                Icons.draw_outlined,
+                                busy
+                                    ? null
+                                    : () {
+                                        final annotate = widget.onAnnotate!;
+                                        widget.onClose();
+                                        annotate();
+                                      },
+                              ),
+                            _action('Close', Icons.close, widget.onClose),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
