@@ -8,9 +8,18 @@ bool get localSyncAvailable => false;
 class LocalAnnotationSync extends ChangeNotifier {
   LocalAnnotationSync(
     ImportableLibrary library, {
-    required SyncPairApproval approve,
+    required this.approve,
+    SyncSecretStore? secrets,
+    bool loopbackForTests = false,
   });
+  SyncPairApproval approve;
   bool get enabled => false;
+  bool get supportsNearby => false;
+  bool get usesNearby => false;
+  String? get nearbyPairingId => null;
+  void setNearbyMode(bool value) {}
+  Future<void> pairNearby(String peer, String code) async {}
+  DateTime? get pairingExpiresAt => null;
   bool get busy => false;
   String get name => 'DocumentZ';
   String get status =>
@@ -27,5 +36,6 @@ class LocalAnnotationSync extends ChangeNotifier {
   Future<void> rename(String value) async {}
   Future<void> forget(String peer) async {}
   Future<void> pair(String address, String code) async {}
+  Future<void> pairAny(List<String> addresses, String code) async {}
   Future<void> syncWith(String peerId, {String? address}) async {}
 }

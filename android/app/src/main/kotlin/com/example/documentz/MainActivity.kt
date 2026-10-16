@@ -19,6 +19,8 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    private var syncQrBridge: SyncQrBridge? = null
+    private var nearbySyncBridge: NearbySyncBridge? = null
     private var immersiveReader = false
     private var syncMulticastLock: WifiManager.MulticastLock? = null
     private var networkResult: MethodChannel.Result? = null
@@ -35,6 +37,10 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        syncQrBridge?.close()
+        syncQrBridge = SyncQrBridge(this, flutterEngine)
+        nearbySyncBridge?.close()
+        nearbySyncBridge = NearbySyncBridge(this, flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "documentz/appearance").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
@@ -208,7 +214,6 @@ class MainActivity : FlutterActivity() {
                 }
                 "read" -> {
                     val uri = call.argument<String>("uri")
-                    val limit = call.argument<Int>("limit") ?: 104857600
                     worker.execute {
                         try {
                             val parsed = Uri.parse(uri ?: throw IllegalArgumentException("Missing URI"))
@@ -219,7 +224,6 @@ class MainActivity : FlutterActivity() {
                                 while (true) {
                                     val count = input.read(buffer)
                                     if (count < 0) break
-                                    if (output.size().toLong() + count > limit) throw IllegalArgumentException("Document exceeds 100 MB")
                                     output.write(buffer, 0, count)
                                 }
                             } ?: throw IllegalArgumentException("Cannot open document")
@@ -255,7 +259,17 @@ class MainActivity : FlutterActivity() {
         if (hasFocus && immersiveReader) window.decorView.post { applyReaderSystemBars() }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        setIntent(intent)
+        syncQrBridge?.handleIntent(intent)
+        super.onNewIntent(intent)
+    }
+
     override fun onDestroy() {
+        nearbySyncBridge?.close()
+        nearbySyncBridge = null
+        syncQrBridge?.close()
+        syncQrBridge = null
         if (syncMulticastLock?.isHeld == true) syncMulticastLock?.release()
         syncMulticastLock = null
         networkResult?.success(false)
@@ -269,6 +283,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (nearbySyncBridge?.permissionResult(requestCode, grantResults) == true) return
         if (requestCode == networkRequest) {
             networkResult?.success(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
             networkResult = null
@@ -280,6 +295,7 @@ class MainActivity : FlutterActivity() {
     @Deprecated("Uses FlutterActivity result forwarding")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (syncQrBridge?.activityResult(requestCode, resultCode, data) == true) return
         if (storageAccess.activityResult(requestCode)) return
         if (requestCode != folderRequest) return
         val result = folderResult ?: return

@@ -1,6 +1,7 @@
 import '../domain/book.dart';
 
-const maxImportBytes = 100 * 1024 * 1024;
+// Document imports have no application-level byte cap. Archive expansion and
+// malformed-content checks remain independent of the source file size.
 const officeArchiveFormats = {
   BookFormat.docx,
   BookFormat.xlsx,

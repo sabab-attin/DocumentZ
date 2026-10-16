@@ -20,7 +20,7 @@ class PageTurnState extends State<PageTurn>
   final boundary = GlobalKey();
   late final animation = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 240),
+    duration: const Duration(milliseconds: 300),
   );
   ui.Image? snapshot;
   ui.ImageShader? snapshotShader;

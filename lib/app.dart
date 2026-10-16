@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'features/device_library.dart';
+import 'features/annotation_sync_screen.dart';
+import 'data/sync_pairing_links.dart';
+import 'data/annotation_sync_session.dart';
 
 import 'package:flutter/material.dart';
 
@@ -50,6 +55,63 @@ class _ReaderShellState extends State<ReaderShell> {
   int libraryRevision = 0;
   late final LibraryRepository repository =
       widget.repository ?? createLibrary();
+  AnnotationSyncSession? syncSession;
+  @override
+  void initState() {
+    super.initState();
+    final library = repository;
+    if (library is ImportableLibrary) {
+      syncSession = AnnotationSyncSession.forLibrary(library);
+      syncSession!.restore();
+      unawaited(SyncPairingLinks.start(_openPairingLink));
+    }
+  }
+
+  @override
+  void dispose() {
+    SyncPairingLinks.stop();
+    syncSession?.dispose();
+    super.dispose();
+  }
+
+  bool _openingPairingRoute = false;
+  String? _pendingPairingLink;
+  void _openPairingLink(String raw) {
+    if (!mounted || SyncPairingLinks.deliverToScreen(raw)) {
+      return;
+    }
+    _pendingPairingLink = raw;
+    if (_openingPairingRoute) {
+      return;
+    }
+    _openingPairingRoute = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final link = _pendingPairingLink;
+      _pendingPairingLink = null;
+      try {
+        final library = repository;
+        if (mounted && link != null && library is ImportableLibrary) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute(
+              builder: (_) => AnnotationSyncScreen(
+                repository: library,
+                initialInvite: link,
+              ),
+            ),
+          );
+        }
+      } finally {
+        _openingPairingRoute = false;
+        final next = _pendingPairingLink;
+        _pendingPairingLink = null;
+        if (mounted && next != null) {
+          _openPairingLink(next);
+        }
+      }
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 800;

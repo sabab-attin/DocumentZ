@@ -97,8 +97,35 @@ class PdfEditing {
     String password = '',
     List<int>? pageOrder,
   }) async {
+    if (inputs.length == 1) {
+      final document = open(inputs.single, password);
+      try {
+        final indices =
+            pageOrder ?? parsePageRange(pages, document.pages.count);
+        if (indices.isEmpty ||
+            indices.any((i) => i < 0 || i >= document.pages.count)) {
+          throw const FormatException('Choose valid pages.');
+        }
+        final inSourceOrder = List.generate(
+          indices.length - 1,
+          (i) => indices[i] < indices[i + 1],
+        ).every((value) => value);
+        if (inSourceOrder) {
+          // Extract original page objects rather than rebuilding artwork. This
+          // retains page boxes, rotation and dimensions for any aspect ratio.
+          final selected = indices.toSet();
+          for (var i = document.pages.count - 1; i >= 0; i--) {
+            if (!selected.contains(i)) document.pages.removeAt(i);
+          }
+          return await save(document);
+        }
+      } finally {
+        document.dispose();
+      }
+    }
     final output = sf.PdfDocument();
     final sources = <sf.PdfDocument>[];
+    final rotations = <sf.PdfPageRotateAngle>[];
     try {
       for (final bytes in inputs) {
         final source = open(bytes, password);
@@ -111,12 +138,36 @@ class PdfEditing {
         for (final index in indices) {
           final template = source.pages[index].createTemplate();
           final section = output.sections!.add();
+          // Syncfusion normalizes size to its current orientation. Set the
+          // orientation explicitly or a landscape template is clipped to portrait.
+          section.pageSettings.orientation =
+              template.size.width > template.size.height
+              ? sf.PdfPageOrientation.landscape
+              : sf.PdfPageOrientation.portrait;
           section.pageSettings.size = template.size;
           section.pageSettings.margins.all = 0;
-          section.pages.add().graphics.drawPdfTemplate(template, Offset.zero);
+          final page = section.pages.add();
+          page.graphics.drawPdfTemplate(template, Offset.zero);
+          rotations.add(source.pages[index].rotation);
         }
       }
-      return await save(output);
+      final saved = await save(output);
+      if (rotations.every(
+        (rotation) => rotation == sf.PdfPageRotateAngle.rotateAngle0,
+      )) {
+        return saved;
+      }
+      // New-page setters ignore rotation, while section rotation transforms the
+      // drawing axes. Rotate loaded pages after the artwork is serialized.
+      final rotated = open(saved, '');
+      try {
+        for (var i = 0; i < rotations.length; i++) {
+          rotated.pages[i].rotation = rotations[i];
+        }
+        return await save(rotated);
+      } finally {
+        rotated.dispose();
+      }
     } finally {
       output.dispose();
       for (final source in sources) {

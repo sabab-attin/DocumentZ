@@ -23,9 +23,6 @@ class BrowserLibrary implements MutableLibrary {
     final format = importFormat(name);
     final builder = BytesBuilder(copy: false);
     await for (final chunk in contents) {
-      if (builder.length + chunk.length > maxImportBytes) {
-        throw const FormatException('Choose a file smaller than 100 MB.');
-      }
       builder.add(chunk);
     }
     final data = builder.takeBytes();

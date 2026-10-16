@@ -75,9 +75,6 @@ class LocalLibrary implements MutableLibrary {
       await sink.addStream(
         contents.map((chunk) {
           size += chunk.length;
-          if (size > maxImportBytes) {
-            throw const FormatException('Choose a file smaller than 100 MB.');
-          }
           if (header.length < 1024) {
             header.addAll(chunk.take(1024 - header.length));
           }

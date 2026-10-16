@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'device_documents_model.dart';
-import 'import_validation.dart';
 import 'browse_formats.dart';
 export 'device_documents_model.dart';
 
@@ -117,13 +116,9 @@ Future<DeviceScan> scanDeviceDocuments() async {
 }
 
 Stream<List<int>> openDeviceDocument(DeviceDocument document) async* {
-  if (document.size > maxImportBytes) {
-    throw const FormatException('Choose a file smaller than 100 MB.');
-  }
   if (Platform.isAndroid) {
     final bytes = await _channel.invokeMethod<List<int>>('read', {
       'uri': document.location,
-      'limit': maxImportBytes,
     });
     if (bytes == null) throw const FileSystemException('Cannot read document');
     yield bytes;

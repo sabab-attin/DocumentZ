@@ -12,6 +12,10 @@ Future<void> main() async {
     yield LicenseEntryWithLineBreaks([
       'Tinos',
     ], await rootBundle.loadString('assets/fonts/OFL-Tinos.txt'));
+    yield LicenseEntryWithLineBreaks([
+      'ZXing Android Embedded',
+      'ZXing core',
+    ], await rootBundle.loadString('assets/licenses/zxing-android.txt'));
   });
   await prepareAppStorage();
   runApp(ReaderApp(preferences: await ReaderPreferences.load()));

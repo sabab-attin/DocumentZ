@@ -12,12 +12,14 @@ class PdfPagePicker extends StatefulWidget {
     required this.bytes,
     required this.title,
     this.multiple = false,
+    this.confirmLabel,
     this.documentLoader,
     this.initialSelection = const [],
   });
   final Uint8List bytes;
   final String title;
   final bool multiple;
+  final String? confirmLabel;
   final Future<PdfDocument> Function()? documentLoader;
   final List<int> initialSelection;
   @override
@@ -272,7 +274,9 @@ class _PdfPagePickerState extends State<PdfPagePicker> {
                                 },
                           child: Text(
                             widget.multiple
-                                ? 'Use selected pages'
+                                ? widget.confirmLabel == null
+                                      ? 'Use selected pages'
+                                      : '${widget.confirmLabel} ${chosen.length} pages'
                                 : 'Use page ${current + 1}',
                           ),
                         ),

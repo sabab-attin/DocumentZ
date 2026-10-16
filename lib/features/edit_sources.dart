@@ -52,12 +52,6 @@ Future<List<EditInput>> chooseEditSources(
           (file) => EditInput(
             file.name.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), ''),
             () async {
-              final size = await file.length();
-              if (size != null && size > 100 * 1024 * 1024) {
-                throw const FormatException(
-                  'Choose PDFs smaller than 100 MB each.',
-                );
-              }
               return file.readAsBytes();
             },
           ),

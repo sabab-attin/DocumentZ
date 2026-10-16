@@ -16,9 +16,5 @@ Future<PickedDocument?> pickDocument() async {
     allowedExtensions: documentExtensions,
   );
   if (file == null) return null;
-  final length = file.lengthSync() ?? await file.length();
-  if (length != null && length > 100 * 1024 * 1024) {
-    throw const FormatException('Choose a file smaller than 100 MB.');
-  }
   return PickedDocument(file.name, file.readAsByteStream);
 }

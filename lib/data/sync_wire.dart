@@ -6,9 +6,46 @@ import 'dart:typed_data';
 
 import 'sync_crypto.dart';
 
+void validateSyncTransportBinding(SyncWire wire, Map<String, dynamic> hello) {
+  if (wire.binding.isNotEmpty && hello['transportBinding'] != wire.binding) {
+    throw const FormatException(
+      'The nearby transport identity does not match. Pair again using a fresh QR.',
+    );
+  }
+}
+
 class SyncWire {
-  SyncWire(this.socket) : _input = StreamIterator(socket);
-  final Socket socket;
+  factory SyncWire(Socket socket) => SyncWire.transport(
+    socket,
+    write: (bytes) async {
+      socket.add(bytes);
+      await socket.flush().timeout(const Duration(seconds: 30));
+    },
+    close: socket.destroy,
+  );
+  factory SyncWire.transport(
+    Stream<Uint8List> input, {
+    required Future<void> Function(List<int>) write,
+    required void Function() close,
+    Future<void> Function()? authorize,
+    String binding = '',
+  }) => SyncWire._transport(input, write, close, authorize, binding);
+
+  SyncWire._transport(
+    Stream<Uint8List> input,
+    this._write,
+    this._close,
+    this._authorize,
+    this.binding,
+  ) : _input = StreamIterator(input);
+  final Future<void> Function(List<int>) _write;
+  final void Function() _close;
+  final Future<void> Function()? _authorize;
+  final String binding;
+  Future<void> authorize() async {
+    await _authorize?.call();
+  }
+
   final StreamIterator<Uint8List> _input;
   Uint8List _chunk = Uint8List(0);
   int _offset = 0;
@@ -52,9 +89,8 @@ class SyncWire {
       throw const FormatException('Annotations are too large for one sync.');
     }
     final header = ByteData(4)..setUint32(0, data.length, Endian.big);
-    socket.add(header.buffer.asUint8List());
-    socket.add(data);
-    await socket.flush().timeout(const Duration(seconds: 30));
+    await _write(header.buffer.asUint8List());
+    await _write(data);
   }
 
   Future<void> send(SyncCipher cipher, Map<String, dynamic> message) async =>
@@ -62,7 +98,7 @@ class SyncWire {
   Future<Map<String, dynamic>> receive(SyncCipher cipher) async =>
       cipher.open(await read(maximum: limit));
   void close() {
-    socket.destroy();
+    _close();
     unawaited(_input.cancel());
   }
 }

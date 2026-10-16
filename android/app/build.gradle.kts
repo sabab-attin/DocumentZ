@@ -49,3 +49,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("com.google.android.gms:play-services-nearby:19.5.1")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+}

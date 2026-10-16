@@ -10,6 +10,8 @@ import 'package:cryptography/cryptography.dart';
 import '../domain/services.dart';
 import 'local_sync_models.dart';
 import 'sync_crypto.dart';
+import 'sync_connection_io.dart';
+import 'nearby_sync_io.dart';
 import 'sync_graph.dart';
 import 'sync_repository.dart';
 import 'sync_wire.dart';
@@ -43,11 +45,24 @@ class LocalAnnotationSync extends ChangeNotifier {
   final SyncSecretStore _credentials;
   final bool loopbackForTests;
   final SyncRepository data;
-  final SyncPairApproval approve;
+  SyncPairApproval approve;
   final _known = <String, Map<String, dynamic>>{};
   final _found = <String, NearbySyncDevice>{};
   final _wires = <SyncWire>{};
   ServerSocket? _server;
+  NearbySyncTransport? _nearby;
+  bool _directNearby = true;
+  bool get supportsNearby => Platform.isAndroid && !loopbackForTests;
+  bool get usesNearby => supportsNearby && _directNearby;
+  String? get nearbyPairingId => usesNearby && enabled ? id : null;
+  void setNearbyMode(bool value) {
+    if (enabled || busy) {
+      return;
+    }
+    _directNearby = value;
+    _notify();
+  }
+
   RawDatagramSocket? _discovery;
   Timer? _beacon;
   bool _enabled = false, _disposed = false, busy = false;
@@ -59,6 +74,7 @@ class LocalAnnotationSync extends ChangeNotifier {
   int _failures = 0;
   DateTime _failureWindow = DateTime.now();
   bool get enabled => _enabled;
+  DateTime? get pairingExpiresAt => _pairUntil;
   List<SyncPeer> get peers => _known.entries
       .map(
         (e) => SyncPeer(
@@ -112,7 +128,13 @@ class LocalAnnotationSync extends ChangeNotifier {
       await operation();
     } catch (error) {
       data.loaded = false;
-      status = error is FormatException ? error.message.toString() : 'Could not sync. Check local network access, device availability and the private-network firewall setting, then retry.';
+      status = error is FormatException
+          ? error.message.toString()
+          : error is SocketException
+          ? 'The local connection was interrupted. Keep both apps open on the same Wi-Fi or hotspot. If a VPN or guest Wi-Fi blocks local devices, allow local-network access or use a phone hotspot.'
+          : error is TimeoutException
+          ? 'The other device did not respond in time. Keep DocumentZ open on both devices and retry.'
+          : 'Sync failed before completion. Your local annotations are kept. Retry, or pair the devices again.';
     } finally {
       verification = '';
       busy = false;
@@ -121,12 +143,50 @@ class LocalAnnotationSync extends ChangeNotifier {
   }
 
   Future<void> start() => _guard(() async {
+    if (_enabled) return;
     final epoch = _epoch;
     await initialize();
     if (!localSyncAvailable && !loopbackForTests) {
       throw const FormatException(
         'Local sync is available in the installed Android and Windows apps.',
       );
+    }
+    if (usesNearby) {
+      await data.prepare(active: () => !_disposed && epoch == _epoch);
+      final transport = _nearby ??= NearbySyncTransport();
+      transport.onIncoming = (link) {
+        if (!_enabled || busy || _disposed || _tooManyFailures()) {
+          link.close();
+          return;
+        }
+        unawaited(
+          _guard(
+            () => _serveWire(
+              link.wire,
+              'nearby:${link.peer}',
+              nearbyPeer: link.peer,
+            ),
+          ),
+        );
+      };
+      status = 'Preparing direct nearby connection…';
+      _notify();
+      await transport.start(id);
+      if (_disposed || epoch != _epoch) {
+        await transport.stop();
+        return;
+      }
+      _enabled = true;
+      addresses = [];
+      _beacon = Timer.periodic(const Duration(seconds: 3), (_) {
+        if (_pairUntil != null && DateTime.now().isAfter(_pairUntil!)) {
+          pairingCode = null;
+          _pairUntil = null;
+        }
+        _notify();
+      });
+      status = 'Ready nearby. Scan a QR on one phone and approve matching numbers. No shared Wi-Fi or hotspot is needed.';
+      return;
     }
     if (!loopbackForTests &&
         Platform.isAndroid &&
@@ -149,7 +209,11 @@ class LocalAnnotationSync extends ChangeNotifier {
     );
     final hosts = loopbackForTests
         ? ['127.0.0.1']
-        : interfaces
+        : (interfaces.toList()..sort(
+                (a, b) =>
+                    syncInterfacePriority(a.name)
+                        .compareTo(syncInterfacePriority(b.name)),
+              ))
               .expand((i) => i.addresses)
               .where((a) => isSyncLocalAddress(a.address))
               .map((a) => a.address)
@@ -187,7 +251,11 @@ class LocalAnnotationSync extends ChangeNotifier {
           socket.destroy();
           return;
         }
-        unawaited(_guard(() => _serve(socket)));
+        unawaited(
+          _guard(
+            () => _serveWire(SyncWire(socket), socket.remoteAddress.address),
+          ),
+        );
       },
       onError: (Object _) {
         status = 'Local listener stopped. Turn sync off and on to retry.';
@@ -269,7 +337,7 @@ class LocalAnnotationSync extends ChangeNotifier {
       _announce();
       _notify();
     });
-    status = 'Ready. Keep this screen open on both devices.';
+    status = 'Ready. Sync stays on while you use DocumentZ.';
   });
   Future<void> _discoveryLock(bool enabled) async {
     if (Platform.isAndroid && !loopbackForTests) {
@@ -293,7 +361,7 @@ class LocalAnnotationSync extends ChangeNotifier {
             'app': 'documentz-sync-1',
             'id': id,
             'name': name,
-            'port': _server!.port,
+            'port': _server?.port ?? 45831,
           }),
         ),
         InternetAddress('255.255.255.255'),
@@ -317,7 +385,7 @@ class LocalAnnotationSync extends ChangeNotifier {
       return;
     }
     pairingCode = syncEncode(syncRandomBytes(16));
-    _pairUntil = DateTime.now().add(const Duration(minutes: 5));
+    _pairUntil = DateTime.now().add(const Duration(minutes: 10));
     _notify();
   }
 
@@ -350,6 +418,7 @@ class LocalAnnotationSync extends ChangeNotifier {
     _discovery = null;
     final server = _server;
     _server = null;
+    await _nearby?.stop();
     for (final wire in _wires.toList()) {
       wire.close();
     }
@@ -369,15 +438,30 @@ class LocalAnnotationSync extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> _hello(SimpleKeyPair key, String mode) async => {
+  Future<Map<String, dynamic>> _hello(
+    SimpleKeyPair key,
+    String mode, {
+    String binding = '',
+  }) async => {
     'v': 1,
     'mode': mode,
     'id': id,
     'name': name,
     'key': syncEncode((await key.extractPublicKey()).bytes),
     'nonce': syncEncode(syncRandomBytes(32)),
-    'port': _server!.port,
+    'port': _server?.port ?? 45831,
+    if (binding.isNotEmpty) 'transportBinding': binding,
+    'features': ['pair-sync-v1', 'saved-ack-v1'],
   };
+  bool _supports(Map<String, dynamic> hello, String feature) {
+    final features = hello['features'];
+    return features is List && features.contains(feature);
+  }
+
+  void _checkBinding(SyncWire wire, Map<String, dynamic> hello) {
+    validateSyncTransportBinding(wire, hello);
+  }
+
   void _validateHello(Map<String, dynamic> hello) {
     if (hello['v'] != 1 ||
         hello['id'] is! String ||
@@ -420,15 +504,29 @@ class LocalAnnotationSync extends ChangeNotifier {
     }
   }
 
-  Future<void> _serve(Socket socket) async {
+  Future<void> _serveWire(
+    SyncWire wire,
+    String remoteAddress, {
+    String? nearbyPeer,
+  }) async {
     final epoch = _epoch;
-    final wire = SyncWire(socket);
     _wires.add(wire);
-    final deadline = Timer(const Duration(seconds: 120), wire.close);
+    final deadline = Timer(
+      wire.binding.isEmpty
+          ? const Duration(seconds: 120)
+          : const Duration(minutes: 10),
+      wire.close,
+    );
     try {
       final raw = await wire.read();
       final proof = raw.remove('proof') as String;
       _validateHello(raw);
+      _checkBinding(wire, raw);
+      if (nearbyPeer != null && raw['id'] != nearbyPeer) {
+        throw const FormatException(
+          'The nearby device identity does not match.',
+        );
+      }
       final peerId = raw['id'] as String;
       final mode = raw['mode'];
       final List<int> secret;
@@ -445,13 +543,14 @@ class LocalAnnotationSync extends ChangeNotifier {
         );
       }
       await verifySyncProof(secret, {'role': 'client', 'hello': raw}, proof);
+      await wire.authorize();
       if (mode == 'pair') {
         pairingCode = null;
         _pairUntil = null;
       }
       _active(epoch);
       final key = await X25519().newKeyPair();
-      final reply = await _hello(key, mode as String);
+      final reply = await _hello(key, mode as String, binding: wire.binding);
       final transcript = {'client': raw, 'server': reply};
       await wire.write({
         ...reply,
@@ -483,7 +582,9 @@ class LocalAnnotationSync extends ChangeNotifier {
         await _rememberPeer(
           peerId,
           _label(raw['name']),
-          '${socket.remoteAddress.address}:${raw['port']}',
+          remoteAddress.startsWith('nearby:')
+              ? remoteAddress
+              : '$remoteAddress:${raw['port']}',
           pairedSecret,
           epoch: epoch,
         );
@@ -496,41 +597,18 @@ class LocalAnnotationSync extends ChangeNotifier {
         }
         await wire.send(cipher, {'kind': 'pair-complete'});
         status = 'Paired. Select Sync now to exchange saved annotations.';
-      } else {
-        await data.prepare(
-          active: () => _enabled && !_disposed && epoch == _epoch,
-        );
-        await wire.send(cipher, {
-          'kind': 'documents',
-          'documents': data.fingerprints.toList(),
-        });
-        final selection = await wire.receive(cipher);
-        if (selection['kind'] != 'exchange') {
-          throw const FormatException('Invalid sync exchange.');
-        }
-        final common = _common(selection['documents'], data.fingerprints);
-        final incoming = Map<String, dynamic>.from(
-          selection['annotations'] as Map,
-        );
-        await _accept(incoming, common, epoch);
-        await wire.send(cipher, {
-          'kind': 'merged',
-          'annotations': await data.snapshot(common),
-        });
-        if ((await wire.receive(cipher))['kind'] != 'saved') {
-          throw const FormatException(
-            'Sync acknowledgement was interrupted. Retry safely.',
+        if (_supports(raw, 'pair-sync-v1')) {
+          await _exchangeServer(
+            wire,
+            cipher,
+            raw,
+            remoteAddress,
+            pairedSecret,
+            epoch,
           );
         }
-        await _rememberPeer(
-          peerId,
-          _label(raw['name']),
-          '${socket.remoteAddress.address}:${raw['port']}',
-          secret,
-          epoch: epoch,
-          lastSync: DateTime.now().millisecondsSinceEpoch,
-        );
-        status = _summary(common.length);
+      } else {
+        await _exchangeServer(wire, cipher, raw, remoteAddress, secret, epoch);
       }
     } catch (_) {
       _failures++;
@@ -542,35 +620,55 @@ class LocalAnnotationSync extends ChangeNotifier {
     }
   }
 
+  Future<void> pairNearby(String peer, String code) => _guard(() async {
+    if (!usesNearby || !RegExp(r'^[a-f0-9]{32}$').hasMatch(peer)) {
+      throw const FormatException(
+        'Choose Nearby phones and enable sync on both updated Android phones.',
+      );
+    }
+    await _connect('nearby:$peer', code: code, expectedId: peer);
+  });
   Future<void> pair(String address, String code) =>
       _guard(() => _connect(address, code: code));
+  Future<void> pairAny(List<String> addresses, String code) => _guard(() async {
+    if (addresses.isEmpty) {
+      throw const FormatException('The invitation has no local addresses.');
+    }
+    await _connect(addresses.first, code: code, alternatives: addresses);
+  });
   Future<void> syncWith(String peerId, {String? address}) => _guard(() async {
     final peer = _known[peerId];
     if (peer == null) {
       throw const FormatException('Pair this device first.');
     }
+    if (usesNearby) {
+      await _connect('nearby:$peerId', expectedId: peerId);
+      return;
+    }
+    if ((peer['address'] as String).startsWith('nearby:') && address == null) {
+      throw const FormatException(
+        'Choose Nearby phones to sync with this device.',
+      );
+    }
     await _connect(
       address ?? _found[peerId]?.address ?? (peer['address'] as String),
       expectedId: peerId,
+      alternatives: address != null
+          ? [address]
+          : [
+              if (_found[peerId] != null) _found[peerId]!.address,
+              peer['address'] as String,
+            ],
     );
   });
   Future<void> _connect(
     String address, {
     String? code,
     String? expectedId,
+    List<String>? alternatives,
   }) async {
     final epoch = _epoch;
     _active(epoch);
-    final pieces = address.trim().split(':');
-    final port = pieces.length == 2 ? int.tryParse(pieces[1]) : null;
-    if (port == null ||
-        port < 1 ||
-        port > 65535 ||
-        !isSyncLocalAddress(pieces[0])) {
-      throw const FormatException(
-        'Enter a local IPv4 address and port, such as 192.168.1.20:45831.',
-      );
-    }
     final mode = code == null ? 'sync' : 'pair';
     final secret = code == null
         ? syncDecode(_known[expectedId]!['secret'] as String, 32)
@@ -579,18 +677,43 @@ class LocalAnnotationSync extends ChangeNotifier {
         ? 'Authenticating pairing…'
         : 'Connecting securely…';
     _notify();
-    final socket = await Socket.connect(
-      InternetAddress(pieces[0]),
-      port,
-      timeout: const Duration(seconds: 8),
-    );
-    final wire = SyncWire(socket);
+    final SyncWire wire;
+    final String connectedAddress;
+    if (address.startsWith('nearby:')) {
+      if (!usesNearby || _nearby == null) {
+        throw const FormatException(
+          'Enable Nearby phones on both devices first.',
+        );
+      }
+      status = 'Finding the other phone nearby…';
+      _notify();
+      final link = await _nearby!.connect(address.substring(7));
+      wire = link.wire;
+      connectedAddress = address;
+    } else {
+      final connected = await connectSyncAddresses(
+        alternatives ?? [address],
+        localAddresses: addresses,
+        active: () => _enabled && !_disposed && epoch == _epoch,
+        onAttempt: (attempt, total) {
+          status = 'Connecting to local address $attempt of $total…';
+          _notify();
+        },
+      );
+      wire = SyncWire(connected.socket);
+      connectedAddress = connected.address;
+    }
     _wires.add(wire);
-    final deadline = Timer(const Duration(seconds: 120), wire.close);
+    final deadline = Timer(
+      wire.binding.isEmpty
+          ? const Duration(seconds: 120)
+          : const Duration(minutes: 10),
+      wire.close,
+    );
     try {
       _active(epoch);
       final key = await X25519().newKeyPair();
-      final hello = await _hello(key, mode);
+      final hello = await _hello(key, mode, binding: wire.binding);
       await wire.write({
         ...hello,
         'proof': await syncProof(secret, {'role': 'client', 'hello': hello}),
@@ -598,6 +721,7 @@ class LocalAnnotationSync extends ChangeNotifier {
       final reply = await wire.read();
       final proof = reply.remove('proof') as String;
       _validateHello(reply);
+      _checkBinding(wire, reply);
       if (reply['mode'] != mode ||
           (expectedId != null && reply['id'] != expectedId)) {
         throw const FormatException(
@@ -606,6 +730,7 @@ class LocalAnnotationSync extends ChangeNotifier {
       }
       final transcript = {'client': hello, 'server': reply};
       await verifySyncProof(secret, {'role': 'server', ...transcript}, proof);
+      await wire.authorize();
       final session = await makeSyncCipher(
         localKey: key,
         remoteKey: reply['key'] as String,
@@ -629,7 +754,7 @@ class LocalAnnotationSync extends ChangeNotifier {
         await _rememberPeer(
           peerId,
           _label(reply['name']),
-          address.trim(),
+          connectedAddress,
           syncDecode(paired['secret'] as String, 32),
           epoch: epoch,
         );
@@ -638,45 +763,144 @@ class LocalAnnotationSync extends ChangeNotifier {
           throw const FormatException('Pairing was interrupted. Pair again.');
         }
         status = 'Paired. Select Sync now to exchange saved annotations.';
+        if (_supports(reply, 'pair-sync-v1')) {
+          await _exchangeClient(
+            wire,
+            cipher,
+            reply,
+            connectedAddress,
+            syncDecode(paired['secret'] as String, 32),
+            epoch,
+          );
+        }
       } else {
-        await data.prepare(
-          active: () => _enabled && !_disposed && epoch == _epoch,
-        );
-        final manifest = await wire.receive(cipher);
-        if (manifest['kind'] != 'documents') {
-          throw const FormatException('Invalid document manifest.');
-        }
-        final common = _common(manifest['documents'], data.fingerprints);
-        await wire.send(cipher, {
-          'kind': 'exchange',
-          'documents': common.toList(),
-          'annotations': await data.snapshot(common),
-        });
-        final merged = await wire.receive(cipher);
-        if (merged['kind'] != 'merged') {
-          throw const FormatException('Invalid merged annotations.');
-        }
-        await _accept(
-          Map<String, dynamic>.from(merged['annotations'] as Map),
-          common,
+        await _exchangeClient(
+          wire,
+          cipher,
+          reply,
+          connectedAddress,
+          secret,
           epoch,
         );
-        await wire.send(cipher, {'kind': 'saved'});
-        await _rememberPeer(
-          peerId,
-          _label(reply['name']),
-          address.trim(),
-          secret,
-          epoch: epoch,
-          lastSync: DateTime.now().millisecondsSinceEpoch,
-        );
-        status = _summary(common.length);
       }
     } finally {
       deadline.cancel();
       _wires.remove(wire);
       wire.close();
     }
+  }
+
+  Future<void> _exchangeServer(
+    SyncWire wire,
+    SyncCipher cipher,
+    Map<String, dynamic> hello,
+    String remoteAddress,
+    List<int> secret,
+    int epoch,
+  ) async {
+    status = 'Comparing saved annotations…';
+    _notify();
+    await data.prepare(active: () => _enabled && !_disposed && epoch == _epoch);
+    await wire.send(cipher, {
+      'kind': 'documents',
+      'documents': data.fingerprints.toList(),
+    });
+    final selection = await wire.receive(cipher);
+    if (selection['kind'] != 'exchange') {
+      throw const FormatException('Invalid sync exchange.');
+    }
+    final common = _common(selection['documents'], data.fingerprints);
+    await _accept(
+      Map<String, dynamic>.from(selection['annotations'] as Map),
+      common,
+      epoch,
+    );
+    final snapshot = await data.snapshot(common);
+    final digest = await syncSnapshotDigest(snapshot);
+    await wire.send(cipher, {
+      'kind': 'merged',
+      'annotations': snapshot,
+      'digest': digest,
+    });
+    final saved = await wire.receive(cipher);
+    if (saved['kind'] != 'saved' ||
+        (_supports(hello, 'saved-ack-v1') && saved['digest'] != digest)) {
+      throw const FormatException(
+        'The other device did not confirm the same saved annotations. Retry sync safely.',
+      );
+    }
+    _active(epoch);
+    await _rememberPeer(
+      hello['id'] as String,
+      _label(hello['name']),
+      remoteAddress.startsWith('nearby:')
+          ? remoteAddress
+          : '$remoteAddress:${hello['port']}',
+      secret,
+      epoch: epoch,
+      lastSync: DateTime.now().millisecondsSinceEpoch,
+    );
+    if (_supports(hello, 'saved-ack-v1')) {
+      await wire.send(cipher, {'kind': 'sync-complete', 'digest': digest});
+    }
+    status = _summary(common.length);
+  }
+
+  Future<void> _exchangeClient(
+    SyncWire wire,
+    SyncCipher cipher,
+    Map<String, dynamic> hello,
+    String address,
+    List<int> secret,
+    int epoch,
+  ) async {
+    status = 'Exchanging saved annotations…';
+    _notify();
+    await data.prepare(active: () => _enabled && !_disposed && epoch == _epoch);
+    final manifest = await wire.receive(cipher);
+    if (manifest['kind'] != 'documents') {
+      throw const FormatException('Invalid document manifest.');
+    }
+    final common = _common(manifest['documents'], data.fingerprints);
+    await wire.send(cipher, {
+      'kind': 'exchange',
+      'documents': common.toList(),
+      'annotations': await data.snapshot(common),
+    });
+    final merged = await wire.receive(cipher);
+    if (merged['kind'] != 'merged') {
+      throw const FormatException('Invalid merged annotations.');
+    }
+    await _accept(
+      Map<String, dynamic>.from(merged['annotations'] as Map),
+      common,
+      epoch,
+    );
+    final digest = await syncSnapshotDigest(await data.snapshot(common));
+    if (_supports(hello, 'saved-ack-v1') && merged['digest'] != digest) {
+      throw const FormatException(
+        'The saved annotation sets do not match yet. Retry sync safely.',
+      );
+    }
+    await wire.send(cipher, {'kind': 'saved', 'digest': digest});
+    if (_supports(hello, 'saved-ack-v1')) {
+      final complete = await wire.receive(cipher);
+      if (complete['kind'] != 'sync-complete' || complete['digest'] != digest) {
+        throw const FormatException(
+          'The other device did not confirm completion. Retry sync safely.',
+        );
+      }
+    }
+    _active(epoch);
+    await _rememberPeer(
+      hello['id'] as String,
+      _label(hello['name']),
+      address,
+      secret,
+      epoch: epoch,
+      lastSync: DateTime.now().millisecondsSinceEpoch,
+    );
+    status = _summary(common.length);
   }
 
   Future<void> _accept(

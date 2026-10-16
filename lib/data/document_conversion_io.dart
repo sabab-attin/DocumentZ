@@ -155,9 +155,6 @@ Future<Uint8List> convertDocumentToPdf(
         '$tool could not convert this document. Check that it is not damaged, encrypted, or DRM-protected.',
       );
     }
-    if (await output.length() > 100 * 1024 * 1024) {
-      throw const FormatException('The converted PDF is larger than 100 MB.');
-    }
     final result = await output.readAsBytes();
     if (!latin1.decode(result.take(1024).toList()).contains('%PDF-')) {
       throw const FormatException('The converter did not produce a valid PDF.');

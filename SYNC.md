@@ -1,89 +1,41 @@
-# Local annotation sync
+# Annotation sync
 
-Local sync is optional and available in the installed Android and Windows apps.
-It is not a cloud service or a KDE Connect protocol implementation.
+Sync is optional. Android phones default to direct nearby pairing; Windows connections use the existing local network mode. Neither mode uses a hosted annotation server or cloud account.
 
-## Use
+## Two nearby Android phones
 
-1. Import the same original document on both devices. Renaming is fine; changing
-   the document bytes creates a different fingerprint.
-2. Open Settings → Annotation sync on both devices and enable Local Wi-Fi sync.
-3. On one device choose Show pairing code. On the other, tap the nearby device
-   or choose Pair by address, and enter the displayed one-time code.
-4. Compare the verification number shown on both devices and approve only if it
-   matches. The 128-bit pairing code is private, expires after five minutes and
-   is consumed by one authenticated pairing attempt.
-5. Select Sync now. Keep both sync screens open until completion.
+1. Install the updated app on both phones and switch on Wi-Fi and Bluetooth. No shared Wi-Fi network or manually configured hotspot is needed.
+2. Import identical original documents on both phones. Save your annotations and close the reader before syncing.
+3. Open Settings → Annotation sync on both, choose Nearby phones and enable sync. Allow Nearby devices access when Android asks.
+4. Scan the other phone's QR. Compare DocumentZ's verification numbers and approve only if they match. A fresh invitation expires after ten minutes and is consumed by an authenticated pairing attempt.
+5. Saved annotations exchange after approval. Both phones must confirm the saved data before the updated protocol reports success. Reopen the document on each phone to see the received marks.
+6. For later saved changes, tap Sync now on one phone. Sync remains enabled when leaving the screen while the app is running; switching it off stops its radio activity and closes transfers.
 
-If discovery is blocked, enter the displayed local IPv4 address and port.
-Windows Firewall may ask for access: allow the app on your private network.
-Guest Wi-Fi client isolation can prevent devices communicating. Android holds a Wi-Fi multicast lock only while discovery is enabled and releases
-it on exit/backgrounding. There is no
-internet relay, Bluetooth transport or continuously running background service.
-The listener normally uses TCP 45831 and discovery uses UDP 45832; an available
-TCP port is used if 45831 is occupied. The displayed address is authoritative.
+This is short-range pairing, not remote internet sync. Both phones need current Google Play services. Wi-Fi and Bluetooth radios must remain enabled. On older Android versions, Android may also require location permission for discovery. Device or system restrictions can still interrupt a connection; the app reports failures and supports a safe retry.
+
+## Computer / local network mode
+
+Switch sync off, select Computer / local network on the Android phone, then enable sync on both devices. This existing mode requires a reachable shared local network. Pair using its QR or displayed local address and one-time code. Windows Firewall may require private-network access. TCP normally uses 45831, with an available port as fallback; UDP discovery uses 45832. Guest-network isolation can block this mode. The Android phone-to-phone nearby mode avoids that IP setup.
 
 ## What is exchanged
 
-Saved annotation data, including bookmarks, drawings, text marks and note/image
-attachments, is exchanged only for document fingerprints present on both
-participating devices. Original document files, filesystem paths, the full
-library list and account credentials are not transferred. Existing annotated
-text quotes are part of annotation data. Reading position and reading preferences
-are not included in this version.
+Saved notes, highlights, text marks, bookmarks, drawings, signatures and note/image attachments are exchanged only for originals with matching format and content fingerprints. Original files, filesystem paths, full library lists, account credentials, reading positions and reading preferences are not transferred. This includes Markdown documents: saved annotations sync, but edits to the Markdown source do not. Changing original file bytes creates a different fingerprint.
 
-Both devices can add and edit annotations while offline. A per-annotation
-operation graph retains deletion records. Concurrent edits produce separate,
-individually editable marks rather than silently overwriting one another.
-Concurrent deletion cannot erase a concurrent edit. After a conflict, inspect
-and remove unwanted overlapping marks. Deleted records remain in sync history
-so older snapshots cannot resurrect them. Sync does not delete documents. Text marks retain their source offsets. Freehand
-and image overlays retain the reader’s normalized geometry; different typography
-on reflowable ebooks can change how those overlays align with words. PDF page
-geometry remains fixed.
+An operation graph preserves edit and removal history. Concurrent edits are retained as separate editable marks; concurrent deletion cannot erase an edit. Review overlapping conflict copies. Repeated sync is idempotent, and old snapshots cannot resurrect recorded removals. Sync never deletes documents. Text marks retain source offsets; freehand/image overlays retain normalized geometry, so different ebook typography can change their alignment. PDF geometry remains fixed.
 
 ## Security design
 
-- Pairing uses an out-of-band, cryptographically random 128-bit secret. It is
-  never sent in a network handshake. Never send it to someone you do not trust.
-- Each connection uses fresh X25519 ephemeral keys and random nonces. HMAC-SHA256
-  authenticates role-separated handshake transcripts with the pairing secret
-  or the already paired device secret. HKDF-SHA256 derives directional session
-  keys. ChaCha20-Poly1305 authenticates and encrypts all annotation transfers.
-- Authenticated sequence counters and per-session keys reject replayed messages.
-- Paired device secrets are held using flutter_secure_storage, not ordinary app
-  preferences. Android secure storage is excluded from backup/device transfer.
-  After a restore or reinstall, pair again. Lost or inaccessible keys never cause
-  sync to fall back to plaintext.
-- Device discovery advertises the app device label, random device ID and local
-  port only while the sync screen is enabled. It carries no document metadata.
-- The user explicitly enables the listener. It closes on leaving the sync screen
-  or backgrounding the app. This is a direct local connection; there is no hosted
-  server, analytics service or external sync endpoint.
-- Unpairing revokes the remote device locally; unpair on both devices to remove
-  both stored credentials. Existing local annotations remain intact.
+- Pairing uses a random 128-bit QR secret, never a permanent peer key. The secret is not transmitted in the connection handshake.
+- Each session has fresh X25519 keys and nonces. HMAC-SHA256 authenticates role-separated transcripts; HKDF-SHA256 derives directional keys; ChaCha20-Poly1305 authenticates and encrypts annotation messages.
+- Nearby connection authentication digits are bound into the authenticated transcript. Different underlying bindings are rejected. Accepting a tentative native radio connection does not trust a peer: valid app-level proof and explicit first-pairing approval are required before annotation exchange.
+- Sequence checks and session keys reject reordered/replayed messages. Native byte frames and unauthenticated input are bounded. Each updated side saves the merge and confirms a matching canonical-history SHA-256 digest; an absent/mismatched acknowledgement cannot report completed sync.
+- Permanent paired-device secrets use secure device storage and are excluded from Android backup/device transfer. Inaccessible keys never cause plaintext fallback. Unpair locally on both devices to remove both stored relationships; saved marks remain intact.
+- An interrupted annotation apply uses a recoverable write-ahead record, checked before the reader loads annotations. Retrying is safe.
 
-The primitives come from the cryptography package. This application protocol is
-new and has not undergone an independent security audit. Local annotations and
-merge history use existing app-private storage; this feature does not add
-whole-device or document encryption at rest. A compromised/unlocked device or a
-trusted paired device can access annotations available to it.
+Nearby advertises only a random app-device identifier, with no document metadata or pairing secret. Active discovery runs during a user-initiated connection attempt and stops once the chosen peer is found. The Google Play services SDK may collect connection-performance and device diagnostics under Google's Usage & diagnostics setting. DocumentZ does not upload document content or plaintext annotation data to a cloud backend. See https://developers.google.com/nearby/connections/overview .
 
-## Boundaries and validation
+## Limits and validation
 
-Local IPv4 Wi-Fi/hotspot connections are supported. Some VPNs or restricted
-networks interfere with discovery or direct connections. Sync is manual using
-Sync now while both screens are open. There is no scheduling or background wakeup.
-Network messages, annotation counts, geometry and attachments are bounded and
-validated before annotation writes. Annotation snapshots are limited to 16 MB
-and 30,000 historical operations per document. These limits fail visibly without
-truncating data. Very image-heavy histories can exceed them.
+Annotation snapshots are bounded to 16 MB, with 30,000 historical operations per document; annotation counts, geometry and images are validated. Large image histories fail visibly rather than being truncated. Local annotation/history storage remains app-private storage; this feature does not add document encryption at rest. An unlocked/compromised phone or an approved paired device can access its annotations. The application protocol has not had an independent security audit.
 
-An interrupted annotation apply has a recoverable write-ahead record, checked
-locally before a reader loads annotations. Retrying
-sync is idempotent. Before release, run analyzer/tests, build both Android and
-Windows, and test real pairing, offline edits/deletions, interrupted sync,
-wrong-code rejection and unpairing between two actual devices. Automated tests
-are supplied for graph merging, crypto/authentication/replay, framed transport,
-matching, cancellation and recovery; passing them does not replace that device
-validation.
+Run analysis, the full test suite and Android/Windows builds before release, then verify real phone pairing, notes/bookmarks in both directions, edits/removals, declined approval, interrupted transfers and unpairing. Automated protocol tests and native compilation do not replace live radio tests on the actual devices.

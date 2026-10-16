@@ -323,3 +323,9 @@ SyncGraph _mergeSyncGraphs(
   copy.merge(input.$2, input.$3);
   return copy;
 }
+
+/// Compare the entire shared operation history, including deletion records.
+Future<String> syncSnapshotDigest(Map<String, dynamic> snapshot) =>
+    compute(_snapshotDigest, snapshot);
+String _snapshotDigest(Map<String, dynamic> snapshot) =>
+    crypto.sha256.convert(utf8.encode(syncCanonical(snapshot))).toString();

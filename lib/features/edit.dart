@@ -467,12 +467,18 @@ class _EditScreenState extends State<EditScreen> {
             final order = await Navigator.push<List<int>>(
               context,
               MaterialPageRoute(
-                builder: (_) => PdfPageOrganizer(
-                  bytes: bytes,
-                  title: action == 'Organize'
-                      ? 'Organize pages'
-                      : 'Choose pages',
-                ),
+                builder: (_) => action == 'Organize'
+                    ? PdfPageOrganizer(bytes: bytes, title: 'Organize pages')
+                    : PdfPagePicker(
+                        bytes: bytes,
+                        title: action == 'Extract pages'
+                            ? 'Select pages to extract'
+                            : 'Select pages to split',
+                        multiple: true,
+                        confirmLabel: action == 'Extract pages'
+                            ? 'Extract'
+                            : 'Split',
+                      ),
               ),
             );
             if (order == null || !mounted) return;
@@ -491,7 +497,7 @@ class _EditScreenState extends State<EditScreen> {
                       name: '${selected.first.title} - Page ${index + 1}',
                       repository: library,
                       onSaved: widget.onSaved,
-                      message: 'Page artwork is copied. Forms and document links are not transferred.',
+                      message: 'Original page copied. DocumentZ annotations remain with the original file.',
                     ),
                   ),
                 );
@@ -724,7 +730,9 @@ class _EditScreenState extends State<EditScreen> {
                 ? 'This copy contains flattened images. Text, forms, links, and old annotations are removed.'
                 : action == 'Encrypt'
                 ? 'Preview before encryption. The saved copy requires your opening password.'
-                : ['Merge', 'Organize', 'Extract pages'].contains(action)
+                : action == 'Extract pages'
+                ? 'Selected pages copied in original order. DocumentZ annotations remain with the original file.'
+                : ['Merge', 'Organize'].contains(action)
                 ? 'Page artwork is copied. Forms, links, bookmarks, and app annotations are not transferred.'
                 : action == 'OCR'
                 ? 'Searchable image copy. Review recognized text for mistakes.'

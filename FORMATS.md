@@ -41,7 +41,7 @@ The conversion adapter is implemented but live converter execution requires thos
 - Direct Office/OpenDocument views preserve readable content, not original page geometry, exact fonts, charts, merged cells, formatting of spreadsheet values, slide animations, macros, calculations, or round-trip editing. Use Windows PDF conversion when page layout matters.
 - RTF's direct view is text-only. HTML/MHTML do not run scripts, fetch remote artwork, or guarantee browser print-layout equivalence. Referenced companion files outside the imported HTML are not available; use embedded data images or saved MHTML.
 - SVG features outside flutter_svg's supported SVG subset may render differently. Linked external assets, complex filters and browser-dependent artwork are not guaranteed.
-- Imports remain limited to 100 MB and expanded archive content to 200 MB. Very wide/large spreadsheets, highly repeated ODF ranges, and TIFFs over 200 pages or 80 million decoded pixels require smaller files or desktop PDF conversion.
+- Document imports have no fixed application-level size cap. Memory and storage availability still apply. Expanded archive content remains limited to 200 MB. Very wide/large spreadsheets, highly repeated ODF ranges, and TIFFs over 200 pages or 80 million decoded pixels require smaller files or desktop PDF conversion.
 - Non-PDF reading views support paragraph-based text marks where the HTML paragraph reader can select text. Cross-paragraph selection and marks over image-only files require the PDF workflow. Sharing an original does not embed app annotation overlays.
 
 ## Verification
