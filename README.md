@@ -1,69 +1,90 @@
 # DocumentZ
 
-A document reader and PDF editor for Android and Windows. Read local files, add notes and bookmarks, and work with PDFs without a DocumentZ account.
+Read PDFs, ebooks and other documents. Add notes, edit PDFs and sync your annotations between devices.
 
-## Download
+DocumentZ is available for Android and Windows. Your documents stay on your device, and reading does not require an account.
 
-- [Android ARM64](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-arm64-v8a-release.apk) — most phones, including Pixel 6a and Galaxy S25 FE.
-- [Android ARM32](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-armeabi-v7a-release.apk) — devices that need 32-bit ARM apps.
-- [Android x86_64](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-x86_64-release.apk) — Android devices and emulators with Intel/AMD processors.
-- [Release notes and checksums](https://github.com/sabab-attin/DocumentZ/releases/latest).
+[Download for Android](https://github.com/sabab-attin/DocumentZ/releases/latest) · [Supported formats](FORMATS.md) · [Sync guide](SYNC.md) · [Report an issue](https://github.com/sabab-attin/DocumentZ/issues)
 
-Open the APK and allow installation from the browser or file manager when Android asks. Updates need the same signing certificate as your installed copy. Keep your existing installation if Android reports a signature conflict: uninstalling can remove local documents and annotations.
+## Features
 
-These downloads are Android apps, including the x86_64 build. Windows can be built from source. Android 7.0 is the configured minimum; some features have additional device requirements.
+- **Read:** Open PDFs, EPUBs, Markdown, text, images and supported Office files. Search within documents, follow links and save bookmarks.
+- **Make it comfortable:** Adjust fonts, text size, alignment and zoom. Choose light or dark pages, paper textures for ebooks and fullscreen reading.
+- **Annotate:** Highlight, underline, strike through, draw and add notes with image attachments. Keep your marks and bookmarks between sessions.
+- **Edit PDFs:** Merge, split, extract, reorder, rotate and delete pages. Compress files, create booklets, fill supported forms, add signatures and redact areas.
+- **Sync across devices:** Pair by QR and exchange saved annotations and bookmarks. Nearby Android phones connect without a shared Wi-Fi network or hotspot; Windows uses local-network sync.
+- **Keep files organized:** Browse your library, search device documents and return to recent files with reading progress.
 
-## What's new in v1.0.3
+Android also supports document scanning and Latin-script OCR. Available tools depend on the document format and platform; see [FORMATS.md](FORMATS.md) for details.
 
-- Pair nearby Android phones by QR, without joining the same Wi-Fi or setting up a hotspot.
-- Keep sync enabled when leaving its screen; pairing codes last ten minutes.
-- Scan QR codes inside the app without downloading a scanner, or open them from a compatible camera app.
-- Exchange saved annotations after pairing, with confirmation that both devices saved the same history.
-- Shorter pairing instructions, with document requirements behind an info button.
-- Remove the 100 MB import cap. Large files still need enough memory and storage.
-- Slightly slower, smoother page turns.
-- Extract PDF pages without cropping wide slides, with fewer steps.
+## Screenshots
 
-## Reading and annotation
+<table>
+  <tr>
+    <th>Recent documents</th>
+    <th>Library</th>
+    <th>Annotations</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/screenshots/recent.jpg" alt="Recent documents with covers and reading progress" width="240"></td>
+    <td valign="top"><img src="docs/screenshots/library.jpg" alt="Document library with search and folder controls" width="240"></td>
+    <td valign="top"><img src="docs/screenshots/annotations.jpg" alt="Reader controls for highlights, notes, bookmarks and annotation tools" width="240"></td>
+  </tr>
+  <tr>
+    <th>Annotation sync</th>
+    <th>PDF tools</th>
+    <th>Reading settings</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/screenshots/sync.jpg" alt="Nearby annotation sync with QR pairing controls" width="240"></td>
+    <td valign="top"><img src="docs/screenshots/pdf-tools.jpg" alt="PDF editing tools including merge, split, organize and rotate" width="240"></td>
+    <td valign="top"><img src="docs/screenshots/reading-settings.jpg" alt="Font, text size, alignment and page-fit settings" width="240"></td>
+  </tr>
+</table>
 
-- Read PDFs, EPUBs, text, Markdown, saved web pages, images and supported Office files. See [FORMATS.md](FORMATS.md) for the full list and conversion requirements.
-- Search documents, follow supported internal links, use contents and bookmarks, and return to recent files.
-- Adjust fonts, text size, alignment, zoom and fullscreen view where the format supports them.
-- Ebook pages have adaptive margins and paper textures in light and dark modes. Publisher styles, borders and image proportions are preserved where supported.
-- Highlight, underline, strike through, draw, place text and images, and attach notes or image attachments.
-- Look up selected words through Google.
+## Download and install
 
-Ebook page counts change with screen size and font settings. They may differ from a printed edition or another reader. EPUB and Office views do not reproduce every publisher layout, and DRM-protected books are unsupported.
+| Android build | Architecture |
+| --- | --- |
+| [ARM64](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-arm64-v8a-release.apk) | 64-bit ARM; most Android phones and tablets |
+| [ARM32](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-armeabi-v7a-release.apk) | 32-bit ARM |
+| [x86_64](https://github.com/sabab-attin/DocumentZ/releases/latest/download/app-x86_64-release.apk) | 64-bit x86 Android devices and emulators |
 
-## PDF tools
+Open the APK and allow installation from your browser or file manager if prompted. Release notes and `SHA256SUMS.txt` are available on the [releases page](https://github.com/sabab-attin/DocumentZ/releases/latest).
 
-Merge, split, extract, reorder, rotate and delete pages. Create booklets, compress files, fill supported forms, add signatures, redact areas, export text or page images, and print or share copies. Android also supports document scanning and Latin-script OCR.
+All three downloads are Android apps. Windows can be built from source. Android 7.0 is the configured minimum; some features have additional requirements.
 
-Some operations simplify the output. Redaction creates image pages; image-based compression loses searchable text and interactive content. Editing may invalidate digital signatures, and merge/split may not preserve all forms, outlines or links. Review generated copies before sharing them.
+Updates must use the same signing certificate as the installed app. If Android reports a signature conflict, keep your existing installation: uninstalling or clearing app data can remove local documents and annotations.
 
-## Sync between devices
+## Sync your annotations
 
-For two Android phones:
+For nearby Android phones:
 
 1. Turn on Wi-Fi and Bluetooth. Open **Settings → Annotation sync** on both phones and enable **Nearby phones** sync.
 2. Allow Nearby devices access, then scan the other phone's QR.
 3. Compare the verification numbers and approve only if they match.
 
-Both phones need the updated app and current Google Play services. Keep them nearby with DocumentZ running. They do not need the same Wi-Fi network. For later changes, tap **Sync now** on one phone.
+Keep both phones nearby with DocumentZ running. Both need the updated app and current Google Play services. For later changes, tap **Sync now** on one phone.
 
-**Import the exact same original document on both devices.** Save your annotations and leave the reader before syncing. Reopen it afterward to see received marks. Matching filenames alone are not enough.
+**Import the exact same original document on both devices.** Save your annotations and leave the reader before syncing, then reopen it to see received marks. Matching filenames alone are not enough.
 
-Sync exchanges saved annotations, drawings, note attachments and bookmarks. It does not transfer original files, Markdown source edits, reading positions or settings. Conflicting edits are kept for review. Ebook layout changes can shift drawing overlays.
+Saved annotations, drawings, note attachments and bookmarks are exchanged. Original files, Markdown source edits, reading positions and settings are not transferred. Conflicting edits are kept for review.
 
-For Windows, select **Computer / local network** and keep both devices on a reachable local network. Firewall access may be required. [SYNC.md](SYNC.md) explains pairing, security and limits.
+For Windows, choose **Computer / local network** and connect both devices to a reachable local network. See [SYNC.md](SYNC.md) for setup, security and limits.
 
 ## Storage and privacy
 
-Documents and annotations are stored locally. Imported files are copied into app storage; clearing app data or uninstalling can remove them. File actions in the device library can affect the original, so read deletion confirmations.
+Documents and annotations are stored locally. Sync is optional, encrypted and requires approval for new devices. DocumentZ does not use a hosted document-sync server. Google Play services Nearby may collect connection diagnostics under Google's Usage & diagnostics setting. The sync protocol has not had an independent security audit.
 
-Sync is optional and encrypted, with approval required for new devices. DocumentZ does not use a hosted document-sync server. Google Play services Nearby may collect connection diagnostics under Google's Usage & diagnostics setting. The sync protocol has not had an independent security audit.
+Sharing sends files through the app or provider you choose. Web lookups and cloud file providers use their own services. Android OCR and Windows document conversion process files locally.
 
-Annotations are stored as app overlays. Sharing the original file does not automatically embed those marks. Sharing, web lookups and cloud file providers use the services you choose. Windows conversion runs locally; Android OCR runs on the device.
+## Document limits
+
+- Annotations are app overlays; sharing the original file does not automatically embed them.
+- Ebook page counts change with screen size and font settings. EPUB and Office views may not preserve every layout detail. DRM-protected books are unsupported.
+- Ebook layout changes can shift drawing overlays.
+- Redaction creates image pages. Image-based compression loses searchable text and interactive content. PDF edits may invalidate signatures or omit some forms, outlines and links. Review exported copies before sharing.
+- Imports have no fixed application-level file-size cap, but available memory and storage still matter.
 
 ## Build from source
 
@@ -81,14 +102,14 @@ flutter build apk --release --split-per-abi
 flutter build windows --release
 ```
 
-Configure your own release signing before distributing Android builds. Official updates must retain the existing app's signing identity. Keep keystores, passwords and debug symbols private. Windows distribution needs the complete release directory, including its libraries and data.
+Configure release signing before distributing Android builds. Official updates must retain the existing app's signing identity. Keep signing keys, passwords and debug symbols private. Windows distribution needs the complete release directory, including its libraries and data.
 
 ## Licenses
 
-Dependencies are listed in [pubspec.yaml](pubspec.yaml) and [pubspec.lock](pubspec.lock). Check their licenses before distribution, including Syncfusion's licensing requirements and [FONT_NOTICE.md](FONT_NOTICE.md). The embedded QR scanner uses ZXing under Apache-2.0. Third-party notices are available in the app.
+Dependencies are listed in [pubspec.yaml](pubspec.yaml) and [pubspec.lock](pubspec.lock). Review their licenses before distribution, including Syncfusion's requirements and [FONT_NOTICE.md](FONT_NOTICE.md). The QR scanner uses ZXing under Apache-2.0. Third-party notices are available in the app.
 
-There is no project-level LICENSE file yet. A public repository alone does not grant an open-source license.
+There is no project-level LICENSE file yet. Public source availability does not by itself grant an open-source license.
 
-## Report a problem
+## Feedback
 
-[Open an issue](https://github.com/sabab-attin/DocumentZ/issues) with your app version, device, document format and steps to reproduce it. A small sample or screenshot helps. Remove private information and never include signing credentials.
+[Open an issue](https://github.com/sabab-attin/DocumentZ/issues) with your app version, operating system, document format and steps to reproduce the problem. Include a small sample or screenshot when useful, with private information removed.
