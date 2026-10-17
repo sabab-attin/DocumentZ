@@ -59,7 +59,7 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
   final shelf = ShelfPreferences('device-library', newestFirst: true);
   Map<String, DocumentFileInfo> fileInfo = {};
   void _shelfChanged() {
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _orderDirty = true);
   }
 
   ShelfOrderData _order(_LibraryItem item) => ShelfOrderData(
@@ -78,6 +78,9 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
   );
 
   List<_LibraryItem> items = [];
+  List<_LibraryItem> _orderedItems = [];
+  Map<String, String> _searchTokens = {};
+  bool _orderDirty = true;
   List<String> folders = [], errors = [];
   final selected = <String>{};
   final imported = <String, String>{};
@@ -151,6 +154,19 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
     }
   }
 
+  Future<void> _rescan() async {
+    try {
+      await scanDeviceDocuments(refresh: true);
+      if (mounted) await _refresh();
+    } catch (_) {
+      if (mounted) {
+        _actionFailure(
+          'Could not refresh the document index. Check folder access and try again.',
+        );
+      }
+    }
+  }
+
   Future<void> _refresh() async {
     final token = ++generation;
     if (mounted) {
@@ -184,13 +200,17 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
           next.add(_LibraryItem(book.id, book.title, book, null));
         }
       }
-      next.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       if (!mounted || token != generation) return;
       setState(() {
         imported
           ..clear()
           ..addAll(mappings);
         items = next;
+        _searchTokens = {
+          for (final item in next)
+            item.id: '${item.name.toLowerCase()} ${item.format.name}',
+        };
+        _orderDirty = true;
         fileInfo = metadata;
         storageAllowed = access;
         folders = scan.folders;
@@ -607,14 +627,16 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
   @override
   Widget build(BuildContext context) {
     final text = query.text.trim().toLowerCase();
-    final matches = items
-        .where(
-          (item) =>
-              item.name.toLowerCase().contains(text) ||
-              item.format.name.contains(text),
-        )
-        .toList();
-    matches.sort((a, b) => shelf.compare(_order(a), _order(b)));
+    if (_orderDirty) {
+      _orderedItems = items.toList()
+        ..sort((a, b) => shelf.compare(_order(a), _order(b)));
+      _orderDirty = false;
+    }
+    final matches = text.isEmpty
+        ? _orderedItems
+        : _orderedItems
+              .where((item) => _searchTokens[item.id]?.contains(text) ?? false)
+              .toList();
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 920),
@@ -641,7 +663,9 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
                       ),
                       IconButton(
                         tooltip: 'Refresh documents',
-                        onPressed: loading || busy ? null : _refresh,
+                        onPressed: loading || busy || deviceDocumentIndexing
+                            ? null
+                            : _rescan,
                         icon: const Icon(Icons.refresh),
                       ),
                     ],
@@ -654,11 +678,15 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
                       subtitle: Text(
                         loading
                             ? 'Finding documents…'
-                            : '${items.where((item) => item.device != null).length} device documents',
+                            : deviceDocumentIndexing
+                            ? 'Building your document index… You can keep browsing.'
+                            : '${items.where((item) => item.device != null).length} documents · Updates automatically',
                       ),
                       trailing: IconButton(
                         tooltip: 'Scan device storage',
-                        onPressed: loading || busy ? null : _refresh,
+                        onPressed: loading || busy || deviceDocumentIndexing
+                            ? null
+                            : _rescan,
                         icon: const Icon(Icons.refresh),
                       ),
                     ),
@@ -717,7 +745,8 @@ class _DeviceLibraryScreenState extends State<DeviceLibraryScreen>
                 ],
               ),
             ),
-            if (loading || busy) const LinearProgressIndicator(),
+            if (loading || busy || deviceDocumentIndexing)
+              const LinearProgressIndicator(),
             Expanded(
               child: failure != null
                   ? Center(child: Text(failure!))

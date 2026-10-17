@@ -3,9 +3,11 @@ export 'device_documents_model.dart';
 
 Future<bool> addDeviceFolder() async => false;
 Future<void> removeDeviceFolder(String folder) async {}
-Future<DeviceScan> scanDeviceDocuments() async => const DeviceScan([], [], [
-  'Folder access is available in the installed Android and Windows apps.',
-]);
+bool get deviceDocumentIndexing => false;
+Future<DeviceScan> scanDeviceDocuments({bool refresh = false}) async =>
+    const DeviceScan([], [], [
+      'Folder access is available in the installed Android and Windows apps.',
+    ]);
 Stream<List<int>> openDeviceDocument(DeviceDocument document) =>
     Stream.error(UnsupportedError('Use Add document in the browser.'));
 

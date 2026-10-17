@@ -1,3 +1,4 @@
+import 'app_updates.dart';
 import '../domain/services.dart';
 import '../data/local_annotation_sync.dart';
 import 'annotation_sync_screen.dart';
@@ -95,7 +96,7 @@ class SettingsScreen extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.sync),
                 title: const Text('Annotation sync'),
-                subtitle: const Text('Pair devices over local Wi-Fi'),
+                subtitle: const Text('Sync annotations between devices'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push<void>(
                   MaterialPageRoute(
@@ -106,6 +107,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
+          if (!preferences.documentSpecific) const AppUpdatesSettings(),
           if (preferences.saveFailed)
             const Text(
               'Preferences work for this session, but could not be saved on this device.',

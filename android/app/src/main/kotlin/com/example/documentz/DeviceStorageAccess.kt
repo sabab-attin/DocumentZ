@@ -154,6 +154,31 @@ class DeviceStorageAccess(private val activity: Activity) {
         return item
     }
 
+    fun scope(): String = AutomaticLibrary.scope(activity)
+
+    /** Seed the first view from Android's existing index, without walking storage. */
+    fun indexed(extensions: Set<String>): List<Map<String, Any>> {
+        if (!allowed() || extensions.isEmpty()) return emptyList()
+        val found = mutableListOf<Map<String, Any>>()
+        val scanRoots = roots()
+        try {
+            val collection = android.provider.MediaStore.Files.getContentUri("external")
+            val projection = arrayOf("_data", "_display_name", "_size", "date_modified")
+            val selection = extensions.joinToString(" OR ") { "_display_name LIKE ?" }
+            val arguments = extensions.map { "%.$it" }.toTypedArray()
+            activity.contentResolver.query(collection, projection, selection, arguments, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val file = File(cursor.getString(0) ?: continue)
+                    val root = scanRoots.firstOrNull { file.path.startsWith(it.path + File.separator) && !blocked(file, it) } ?: continue
+                    if (!file.isFile) continue
+                    found.add(mapOf("uri" to Uri.fromFile(file).toString(), "name" to (cursor.getString(1) ?: file.name),
+                        "folder" to root.path, "size" to file.length(), "modified" to file.lastModified()))
+                }
+            }
+        } catch (_: Exception) { /* The one-time complete scan fills missing metadata. */ }
+        return found
+    }
+
     fun scan(extensions: Set<String>): List<Map<String, Any>> {
         if (!allowed()) return emptyList()
         val files = linkedMapOf<String, Map<String, Any>>()
@@ -187,6 +212,7 @@ class DeviceStorageAccess(private val activity: Activity) {
                 }
             }
         }
+        AutomaticLibrary.seed(activity, visited)
         return files.values.toList()
     }
 }

@@ -19,6 +19,9 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    private var automaticLibraryBridge: AutomaticLibraryBridge? = null
+    private var documentOpenBridge: DocumentOpenBridge? = null
+    private var appUpdateBridge: AppUpdateBridge? = null
     private var syncQrBridge: SyncQrBridge? = null
     private var nearbySyncBridge: NearbySyncBridge? = null
     private var immersiveReader = false
@@ -30,6 +33,7 @@ class MainActivity : FlutterActivity() {
         "kawaii" to "com.example.documentz.LauncherKawaii",
         "medieval" to "com.example.documentz.LauncherMedieval"
     )
+    private val scanner = Executors.newSingleThreadExecutor()
     private val worker = Executors.newSingleThreadExecutor()
     private var folderResult: MethodChannel.Result? = null
     private val folderRequest = 8432
@@ -37,6 +41,12 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        automaticLibraryBridge?.close()
+        automaticLibraryBridge = AutomaticLibraryBridge(this, flutterEngine)
+        documentOpenBridge?.close()
+        documentOpenBridge = DocumentOpenBridge(this, flutterEngine)
+        appUpdateBridge?.close()
+        appUpdateBridge = AppUpdateBridge(this, flutterEngine)
         syncQrBridge?.close()
         syncQrBridge = SyncQrBridge(this, flutterEngine)
         nearbySyncBridge?.close()
@@ -134,9 +144,18 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     } catch (e: Exception) { result.error("permission", e.message, null) }
                 }
-                "scan" -> {
+                "scanScope" -> result.success(storageAccess.scope())
+                "quickScan" -> {
                     val extensions = (call.argument<List<String>>("extensions") ?: emptyList()).toSet()
                     worker.execute {
+                        val folders = contentResolver.persistedUriPermissions.filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }.map { it.uri.toString() }
+                        val files = storageAccess.indexed(extensions).map { storageAccess.connectedIdentity(it, folders) }
+                        runOnUiThread { result.success(mapOf("files" to files, "folders" to folders, "errors" to emptyList<String>())) }
+                    }
+                }
+                "scan" -> {
+                    val extensions = (call.argument<List<String>>("extensions") ?: emptyList()).toSet()
+                    scanner.execute {
                         try {
                             val files = linkedMapOf<String, Map<String, Any>>()
                             val errors = mutableListOf<String>()
@@ -151,7 +170,7 @@ class MainActivity : FlutterActivity() {
                                 val queue = java.util.ArrayDeque<String>()
                                 val visited = mutableSetOf<String>()
                                 queue.add(DocumentsContract.getTreeDocumentId(tree))
-                                while (!queue.isEmpty()) {
+                                while (!queue.isEmpty() && !Thread.currentThread().isInterrupted) {
                                     val parent = queue.removeFirst()
                                     if (!visited.add(parent)) continue
                                     try {
@@ -261,11 +280,24 @@ class MainActivity : FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         setIntent(intent)
+        documentOpenBridge?.handleIntent(intent)
+        appUpdateBridge?.handleIntent(intent)
         syncQrBridge?.handleIntent(intent)
         super.onNewIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        automaticLibraryBridge?.resume()
+    }
+
     override fun onDestroy() {
+        automaticLibraryBridge?.close()
+        automaticLibraryBridge = null
+        documentOpenBridge?.close()
+        documentOpenBridge = null
+        appUpdateBridge?.close()
+        appUpdateBridge = null
         nearbySyncBridge?.close()
         nearbySyncBridge = null
         syncQrBridge?.close()
@@ -277,12 +309,14 @@ class MainActivity : FlutterActivity() {
         storageAccess.close()
         folderResult?.success(false)
         folderResult = null
+        scanner.shutdownNow()
         worker.shutdown()
         super.onDestroy()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (appUpdateBridge?.permissionResult(requestCode, grantResults) == true) return
         if (nearbySyncBridge?.permissionResult(requestCode, grantResults) == true) return
         if (requestCode == networkRequest) {
             networkResult?.success(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)

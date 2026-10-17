@@ -1,3 +1,8 @@
+import 'data/automatic_device_changes.dart';
+import 'data/external_documents.dart';
+import 'data/external_document_import.dart';
+import 'features/reader.dart';
+
 import 'dart:async';
 
 import 'features/device_library.dart';
@@ -64,14 +69,90 @@ class _ReaderShellState extends State<ReaderShell> {
       syncSession = AnnotationSyncSession.forLibrary(library);
       syncSession!.restore();
       unawaited(SyncPairingLinks.start(_openPairingLink));
+      unawaited(ExternalDocuments.start(_incomingDocument));
     }
   }
 
   @override
   void dispose() {
+    AutomaticDeviceChanges.stop();
+    ExternalDocuments.stop();
     SyncPairingLinks.stop();
     syncSession?.dispose();
     super.dispose();
+  }
+
+  bool _openingDocument = false;
+  bool _readDocumentsAgain = false;
+  void _incomingDocument() {
+    if (!mounted) return;
+    if (_openingDocument) {
+      _readDocumentsAgain = true;
+      return;
+    }
+    _openingDocument = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_openIncomingDocuments());
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  Future<void> _openIncomingDocuments() async {
+    try {
+      do {
+        _readDocumentsAgain = false;
+        while (mounted) {
+          final library = repository;
+          if (library is! ImportableLibrary) return;
+          final incoming = await ExternalDocuments.take();
+          if (incoming == null || !mounted) break;
+          final id = incoming['id'] as String;
+          final messenger = ScaffoldMessenger.of(context);
+          final opening = messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Opening document…'),
+              duration: Duration(minutes: 5),
+            ),
+          );
+          try {
+            final book = await importExternalDocument(
+              library,
+              incoming['name'] as String,
+              incoming['path'] as String,
+            );
+            if (!mounted) return;
+            setState(() => libraryRevision++);
+            unawaited(
+              Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => ReaderScreen(
+                    book: book,
+                    preferences: widget.preferences,
+                    repository: repository,
+                  ),
+                ),
+              ),
+            );
+          } finally {
+            opening.close();
+            await ExternalDocuments.finish(id);
+          }
+        }
+      } while (_readDocumentsAgain && mounted);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is FormatException ? error.message.toString() : 'Could not open the document. Check the file, storage space and access permissions.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      _openingDocument = false;
+      if (_readDocumentsAgain && mounted) _incomingDocument();
+    }
   }
 
   bool _openingPairingRoute = false;

@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application tools:replace="android:fullBackupContent,android:dataExtractionRules"
         android:requestLegacyExternalStorage="true"
         android:fullBackupContent="@xml/sync_backup_rules"
@@ -43,6 +46,147 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="documentz-sync"/>
+            </intent-filter>
+            <!-- File-manager Open with and Share targets. Validate content on import. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="content"/>
+                <data android:scheme="file"/>
+                <data android:mimeType="application/pdf"/>
+                <data android:mimeType="application/x-pdf"/>
+                <data android:mimeType="application/epub+zip"/>
+                <data android:mimeType="application/x-epub+zip"/>
+                <data android:mimeType="application/x-mobipocket-ebook"/>
+                <data android:mimeType="application/vnd.amazon.ebook"/>
+                <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/markdown"/>
+                <data android:mimeType="text/x-markdown"/>
+                <data android:mimeType="text/html"/>
+                <data android:mimeType="application/xhtml+xml"/>
+                <data android:mimeType="application/rtf"/>
+                <data android:mimeType="text/rtf"/>
+                <data android:mimeType="multipart/related"/>
+                <data android:mimeType="message/rfc822"/>
+                <data android:mimeType="application/msword"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+                <data android:mimeType="application/vnd.ms-excel"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>
+                <data android:mimeType="application/vnd.ms-powerpoint"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.text"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation"/>
+                <data android:mimeType="application/postscript"/>
+                <data android:mimeType="image/png"/>
+                <data android:mimeType="image/jpeg"/>
+                <data android:mimeType="image/bmp"/>
+                <data android:mimeType="image/gif"/>
+                <data android:mimeType="image/tiff"/>
+                <data android:mimeType="image/svg+xml"/>
+                <data android:mimeType="application/octet-stream"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="application/pdf"/>
+                <data android:mimeType="application/x-pdf"/>
+                <data android:mimeType="application/epub+zip"/>
+                <data android:mimeType="application/x-epub+zip"/>
+                <data android:mimeType="application/x-mobipocket-ebook"/>
+                <data android:mimeType="application/vnd.amazon.ebook"/>
+                <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/markdown"/>
+                <data android:mimeType="text/x-markdown"/>
+                <data android:mimeType="text/html"/>
+                <data android:mimeType="application/xhtml+xml"/>
+                <data android:mimeType="application/rtf"/>
+                <data android:mimeType="text/rtf"/>
+                <data android:mimeType="multipart/related"/>
+                <data android:mimeType="message/rfc822"/>
+                <data android:mimeType="application/msword"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+                <data android:mimeType="application/vnd.ms-excel"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>
+                <data android:mimeType="application/vnd.ms-powerpoint"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.text"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation"/>
+                <data android:mimeType="application/postscript"/>
+                <data android:mimeType="image/png"/>
+                <data android:mimeType="image/jpeg"/>
+                <data android:mimeType="image/bmp"/>
+                <data android:mimeType="image/gif"/>
+                <data android:mimeType="image/tiff"/>
+                <data android:mimeType="image/svg+xml"/>
+                <data android:mimeType="application/octet-stream"/>
+            </intent-filter>
+            <!-- File managers that send a file URI without a MIME type. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="file" android:host="*"/>
+                <data android:pathPattern=".*\\.pdf"/>
+                <data android:pathPattern=".*\\.PDF"/>
+                <data android:pathPattern=".*\\.epub"/>
+                <data android:pathPattern=".*\\.EPUB"/>
+                <data android:pathPattern=".*\\.mobi"/>
+                <data android:pathPattern=".*\\.MOBI"/>
+                <data android:pathPattern=".*\\.txt"/>
+                <data android:pathPattern=".*\\.TXT"/>
+                <data android:pathPattern=".*\\.md"/>
+                <data android:pathPattern=".*\\.MD"/>
+                <data android:pathPattern=".*\\.markdown"/>
+                <data android:pathPattern=".*\\.MARKDOWN"/>
+                <data android:pathPattern=".*\\.rtf"/>
+                <data android:pathPattern=".*\\.RTF"/>
+                <data android:pathPattern=".*\\.html"/>
+                <data android:pathPattern=".*\\.HTML"/>
+                <data android:pathPattern=".*\\.htm"/>
+                <data android:pathPattern=".*\\.HTM"/>
+                <data android:pathPattern=".*\\.mhtml"/>
+                <data android:pathPattern=".*\\.MHTML"/>
+                <data android:pathPattern=".*\\.mht"/>
+                <data android:pathPattern=".*\\.MHT"/>
+                <data android:pathPattern=".*\\.doc"/>
+                <data android:pathPattern=".*\\.DOC"/>
+                <data android:pathPattern=".*\\.docx"/>
+                <data android:pathPattern=".*\\.DOCX"/>
+                <data android:pathPattern=".*\\.xls"/>
+                <data android:pathPattern=".*\\.XLS"/>
+                <data android:pathPattern=".*\\.xlsx"/>
+                <data android:pathPattern=".*\\.XLSX"/>
+                <data android:pathPattern=".*\\.ppt"/>
+                <data android:pathPattern=".*\\.PPT"/>
+                <data android:pathPattern=".*\\.pptx"/>
+                <data android:pathPattern=".*\\.PPTX"/>
+                <data android:pathPattern=".*\\.odt"/>
+                <data android:pathPattern=".*\\.ODT"/>
+                <data android:pathPattern=".*\\.ods"/>
+                <data android:pathPattern=".*\\.ODS"/>
+                <data android:pathPattern=".*\\.odp"/>
+                <data android:pathPattern=".*\\.ODP"/>
+                <data android:pathPattern=".*\\.png"/>
+                <data android:pathPattern=".*\\.PNG"/>
+                <data android:pathPattern=".*\\.jpg"/>
+                <data android:pathPattern=".*\\.JPG"/>
+                <data android:pathPattern=".*\\.jpeg"/>
+                <data android:pathPattern=".*\\.JPEG"/>
+                <data android:pathPattern=".*\\.bmp"/>
+                <data android:pathPattern=".*\\.BMP"/>
+                <data android:pathPattern=".*\\.gif"/>
+                <data android:pathPattern=".*\\.GIF"/>
+                <data android:pathPattern=".*\\.tif"/>
+                <data android:pathPattern=".*\\.TIF"/>
+                <data android:pathPattern=".*\\.tiff"/>
+                <data android:pathPattern=".*\\.TIFF"/>
+                <data android:pathPattern=".*\\.svg"/>
+                <data android:pathPattern=".*\\.SVG"/>
+                <data android:pathPattern=".*\\.ps"/>
+                <data android:pathPattern=".*\\.PS"/>
+                <data android:pathPattern=".*\\.eps"/>
+                <data android:pathPattern=".*\\.EPS"/>
             </intent-filter>
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
@@ -89,6 +233,23 @@
         <activity android:name="com.example.documentz.SyncQrCaptureActivity"
             android:exported="false" android:screenOrientation="fullSensor"
             android:theme="@style/zxing_CaptureTheme"/>
+        <service android:name="com.example.documentz.UpdateCheckJob"
+            android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true"/>
+        <receiver android:name="com.example.documentz.UpdateDownloadReceiver" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.DOWNLOAD_COMPLETE"/></intent-filter>
+        </receiver>
+        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths"/>
+        </provider>
+        <service android:name="com.example.documentz.AutomaticLibraryJob"
+            android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true"/>
+        <receiver android:name="com.example.documentz.AutomaticLibraryBootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

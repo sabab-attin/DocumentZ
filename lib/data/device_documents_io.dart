@@ -1,3 +1,13 @@
+import 'dart:async';
+
+import 'automatic_device_changes.dart';
+
+import 'dart:convert';
+
+import 'device_document_index.dart';
+import 'device_index_storage_io.dart';
+import 'library_changes.dart';
+
 import 'dart:io';
 
 import 'package:path/path.dart' as path;
@@ -45,7 +55,86 @@ Future<void> removeDeviceFolder(String folder) async {
   );
 }
 
-Future<DeviceScan> scanDeviceDocuments() async {
+final _deviceIndex = DeviceDocumentIndex(
+  read: readDeviceIndex,
+  write: writeDeviceIndex,
+  quickScan: _quickDeviceDocuments,
+  fullScan: _scanDeviceDocumentsUncached,
+  onChanged: LibraryChanges.instance.changed,
+);
+bool get deviceDocumentIndexing => _deviceIndex.indexing;
+Future<DeviceScan> scanDeviceDocuments({bool refresh = false}) async {
+  final prefs = await SharedPreferences.getInstance();
+  // Without connected desktop folders there is no device index to load.
+  // Keep imported documents available without touching native disk storage.
+  if (!Platform.isAndroid && (prefs.getStringList(_foldersKey) ?? []).isEmpty) {
+    return const DeviceScan([], [], []);
+  }
+  final scope = Platform.isAndroid
+      ? await _channel.invokeMethod<String>('scanScope') ?? 'android'
+      : jsonEncode((prefs.getStringList(_foldersKey) ?? []).toList()..sort());
+  final scan = await _deviceIndex.load('browse-v1:$scope', refresh: refresh);
+  if (Platform.isAndroid) {
+    AutomaticDeviceChanges.start(_applyAutomaticChanges);
+    unawaited(AutomaticDeviceChanges.requestRefresh());
+  }
+  return scan;
+}
+
+Future<void> _applyAutomaticChanges(Map<String, dynamic> raw) async {
+  final scope = await _channel.invokeMethod<String>('scanScope');
+  if (scope != raw['scope']) {
+    throw const FormatException('Storage permissions changed.');
+  }
+  await _deviceIndex.load('browse-v1:$scope');
+  final documents = (raw['files'] as List? ?? [])
+      .map(
+        (entry) => DeviceDocument(
+          location: entry['uri'] as String,
+          name: entry['name'] as String,
+          folder: entry['folder'] as String,
+          size: (entry['size'] as num).toInt(),
+          modified: (entry['modified'] as num).toInt(),
+        ),
+      )
+      .where((doc) => isBrowseDocumentName(doc.name))
+      .toList();
+  await _deviceIndex.applyChanges(
+    DeviceScan(documents, [], []),
+    (raw['removed'] as List? ?? []).cast<String>().toSet(),
+  );
+}
+
+Future<DeviceScan> _quickDeviceDocuments() async {
+  if (Platform.isAndroid) {
+    final raw = await _channel.invokeMapMethod<String, dynamic>('quickScan', {
+      'extensions': browseDocumentExtensions,
+    });
+    return DeviceScan(
+      (raw?['files'] as List? ?? [])
+          .map(
+            (e) => DeviceDocument(
+              location: e['uri'] as String,
+              name: e['name'] as String,
+              folder: e['folder'] as String,
+              size: (e['size'] as num?)?.toInt() ?? 0,
+              modified: (e['modified'] as num?)?.toInt() ?? 0,
+            ),
+          )
+          .where((doc) => isBrowseDocumentName(doc.name))
+          .toList(),
+      (raw?['folders'] as List? ?? []).cast<String>(),
+      (raw?['errors'] as List? ?? []).cast<String>(),
+    );
+  }
+  return DeviceScan(
+    [],
+    (await SharedPreferences.getInstance()).getStringList(_foldersKey) ?? [],
+    [],
+  );
+}
+
+Future<DeviceScan> _scanDeviceDocumentsUncached() async {
   if (Platform.isAndroid) {
     final raw = await _channel.invokeMapMethod<String, dynamic>('scan', {
       'extensions': browseDocumentExtensions,
@@ -161,13 +250,15 @@ Future<DeviceDocument> renameDeviceDocument(
           'name': name,
         }) ??
         document.location;
-    final scan = await scanDeviceDocuments();
-    for (final file in scan.documents) {
-      if (file.location == location) return file;
-    }
-    throw const FormatException(
-      'The file was renamed, but could not be rescanned. Refresh the library.',
+    final renamed = DeviceDocument(
+      location: location,
+      name: name,
+      folder: document.folder,
+      size: document.size,
+      modified: document.modified,
     );
+    await _deviceIndex.replace(document, renamed);
+    return renamed;
   }
   await _checkDeviceFile(document);
   final destination = path.join(path.dirname(document.location), name);
@@ -176,20 +267,24 @@ Future<DeviceDocument> renameDeviceDocument(
   }
   final file = await File(document.location).rename(destination);
   final stat = await file.stat();
-  return DeviceDocument(
+  final renamed = DeviceDocument(
     location: file.path,
     name: name,
     folder: document.folder,
     size: stat.size,
     modified: stat.modified.millisecondsSinceEpoch,
   );
+  await _deviceIndex.replace(document, renamed);
+  return renamed;
 }
 
 Future<void> deleteDeviceDocument(DeviceDocument document) async {
   if (Platform.isAndroid) {
     await _channel.invokeMethod<void>('delete', {'uri': document.location});
+    await _deviceIndex.replace(document, null);
     return;
   }
   await _checkDeviceFile(document);
   await File(document.location).delete();
+  await _deviceIndex.replace(document, null);
 }

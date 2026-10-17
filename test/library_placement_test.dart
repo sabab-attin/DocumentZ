@@ -9,6 +9,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'
+    show MethodChannel, MissingPluginException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +20,7 @@ import 'package:documentz/data/reading_progress.dart';
 import 'package:documentz/data/device_documents.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     RecentDocuments.instance.resetForTests();
@@ -212,6 +215,22 @@ void main() {
 
   test('folder indexing includes subfolders, excludes unsupported files and deduplicates overlapping roots', () async {
     if (Platform.isAndroid) return;
+    final support = await Directory.systemTemp.createTemp(
+      'documentz-index-support-',
+    );
+    const storageChannel = MethodChannel('plugins.flutter.io/path_provider');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(storageChannel, (call) async {
+      if (call.method == 'getApplicationSupportDirectory') {
+        return support.path;
+      }
+      throw MissingPluginException(call.method);
+    });
+    addTearDown(() async {
+      messenger.setMockMethodCallHandler(storageChannel, null);
+      await support.delete(recursive: true);
+    });
     final root = await Directory.systemTemp.createTemp('documentz-index-test-');
     addTearDown(() async {
       await root.delete(recursive: true);
@@ -228,7 +247,8 @@ void main() {
         if (Platform.isWindows) child.path.toUpperCase().replaceAll('/', '\\'),
       ],
     });
-    final scan = await scanDeviceDocuments();
+    // Check the complete scan; normal launches can return a cached/quick list.
+    final scan = await scanDeviceDocuments(refresh: true);
     expect(scan.errors, isEmpty);
     expect(
       scan.documents.map((document) => document.name),

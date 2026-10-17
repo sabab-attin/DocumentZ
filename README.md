@@ -8,12 +8,13 @@ DocumentZ is available for Android and Windows. Your documents stay on your devi
 
 ## Features
 
-- **Read:** Open PDFs, EPUBs, Markdown, text, images and supported Office files. Search within documents, follow links and save bookmarks.
+- **Read:** Open PDFs, EPUBs, Markdown, text, images and supported Office files. On Android, open supported documents directly from a file manager or Share menu. Search within documents, follow links and save bookmarks.
 - **Make it comfortable:** Adjust fonts, text size, alignment and zoom. Choose light or dark pages, paper textures for ebooks and fullscreen reading.
 - **Annotate:** Highlight, underline, strike through, draw and add notes with image attachments. Keep your marks and bookmarks between sessions.
 - **Edit PDFs:** Merge, split, extract, reorder, rotate and delete pages. Compress files, create booklets, fill supported forms, add signatures and redact areas.
 - **Sync across devices:** Pair by QR and exchange saved annotations and bookmarks. Nearby Android phones connect without a shared Wi-Fi network or hotspot; Windows uses local-network sync.
-- **Keep files organized:** Browse your library, search device documents and return to recent files with reading progress.
+- **Keep files organized:** Browse your library, search device documents and return to recent files with reading progress. Android saves its document index and picks up new downloads and file changes automatically.
+- **Stay up to date:** Check for Android updates in Settings, or enable notifications for new GitHub releases.
 
 Android also supports document scanning and Latin-script OCR. Available tools depend on the document format and platform; see [FORMATS.md](FORMATS.md) for details.
 
@@ -56,6 +57,8 @@ All three downloads are Android apps. Windows can be built from source. Android 
 
 Updates must use the same signing certificate as the installed app. If Android reports a signature conflict, keep your existing installation: uninstalling or clearing app data can remove local documents and annotations.
 
+In **Settings → App updates**, check for a new version or turn on **Automatic update checks**. Tap an update notification to download it. DocumentZ checks the downloaded APK before opening Android's installer; you confirm the installation. Background checks depend on Android's scheduling and battery settings. See [UPDATES.md](UPDATES.md) for details and [CHANGELOG.md](CHANGELOG.md) for recent changes.
+
 ## Sync your annotations
 
 For nearby Android phones:
@@ -76,7 +79,11 @@ For Windows, choose **Computer / local network** and connect both devices to a r
 
 Documents and annotations are stored locally. Sync is optional, encrypted and requires approval for new devices. DocumentZ does not use a hosted document-sync server. Google Play services Nearby may collect connection diagnostics under Google's Usage & diagnostics setting. The sync protocol has not had an independent security audit.
 
+The first Android library scan runs in the background. Later launches reuse the saved index while file changes are checked automatically. Storage access or connected-folder permission is required to discover device documents. Battery restrictions and force-stop can delay background discovery; opening the app lets it catch up.
+
 Sharing sends files through the app or provider you choose. Web lookups and cloud file providers use their own services. Android OCR and Windows document conversion process files locally.
+
+App update checks contact GitHub. They do not send your documents, annotations or library list. Automatic update checks are off by default.
 
 ## Document limits
 
