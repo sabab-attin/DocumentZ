@@ -19,6 +19,20 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    private var outputPermissionResult: MethodChannel.Result? = null
+    private var outputPermissionEntries: List<Map<String, String>>? = null
+    private val outputPermissionRequest = 8449
+
+    private fun writeEditedOutputs(entries: List<Map<String, String>>, result: MethodChannel.Result) {
+        worker.execute {
+            try {
+                val locations = EditedDocumentStorage.save(applicationContext, entries)
+                runOnUiThread { result.success(locations) }
+            } catch (error: Exception) {
+                runOnUiThread { result.error("save", error.message ?: "Could not save edited files.", null) }
+            }
+        }
+    }
     private var automaticLibraryBridge: AutomaticLibraryBridge? = null
     private var documentOpenBridge: DocumentOpenBridge? = null
     private var appUpdateBridge: AppUpdateBridge? = null
@@ -41,6 +55,22 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "documentz/edit_outputs").setMethodCallHandler { call, result ->
+            if (call.method != "save") { result.notImplemented() }
+            else {
+                val entries = call.argument<List<Map<String, String>>>("files")
+                if (entries == null) { result.error("save", "Missing edited files.", null) }
+                else if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    if (outputPermissionResult != null) result.error("busy", "A storage permission request is already open.", null)
+                    else {
+                        outputPermissionResult = result
+                        outputPermissionEntries = entries
+                        requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), outputPermissionRequest)
+                    }
+                }
+                else writeEditedOutputs(entries, result)
+            }
+        }
         automaticLibraryBridge?.close()
         automaticLibraryBridge = AutomaticLibraryBridge(this, flutterEngine)
         documentOpenBridge?.close()
@@ -316,6 +346,17 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == outputPermissionRequest) {
+            val result = outputPermissionResult
+            val entries = outputPermissionEntries
+            outputPermissionResult = null
+            outputPermissionEntries = null
+            if (result != null) {
+                if (entries != null && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) writeEditedOutputs(entries, result)
+                else result.error("permission", "Allow storage access to save edited files in Downloads, then retry.", null)
+            }
+            return
+        }
         if (appUpdateBridge?.permissionResult(requestCode, grantResults) == true) return
         if (nearbySyncBridge?.permissionResult(requestCode, grantResults) == true) return
         if (requestCode == networkRequest) {

@@ -1,3 +1,5 @@
+import 'package:documentz/data/edit_output.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,37 +53,38 @@ Future<void> settleApp(WidgetTester tester) async {
   });
 }
 
+late _EditPicker _picker;
 void main() {
   setUp(() {
+    final previousPicker = FilePickerPlatform.instance;
+    _picker = _EditPicker();
+    FilePickerPlatform.instance = _picker;
+    addTearDown(() => FilePickerPlatform.instance = previousPicker);
     SharedPreferences.setMockInitialValues({});
     RecentDocuments.instance.resetForTests();
     ReadingProgress.instance.resetForTests();
   });
-  testWidgets(
-    'Merge offers Library and local storage after choosing the action',
-    (tester) async {
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
-      tester.view.physicalSize = const Size(360, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(
-        ReaderApp(
-          preferences: ReaderPreferences(),
-          repository: BrowserLibrary(),
-        ),
-      );
-      await settleApp(tester);
-      await tester.tap(find.text('Edit'));
-      await settleApp(tester);
-      await tester.tap(find.text('Merge'));
-      await settleApp(tester);
-      expect(find.text('Select from library'), findsOneWidget);
-      expect(find.text('Local storage'), findsOneWidget);
-      expect(find.text('Existing PDF password (if needed)'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('Merge opens the system file picker directly', (tester) async {
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ReaderApp(preferences: ReaderPreferences(), repository: BrowserLibrary()),
+    );
+    await settleApp(tester);
+    await tester.tap(find.text('Edit'));
+    await settleApp(tester);
+    await tester.tap(find.text('Merge'));
+    await settleApp(tester);
+    expect(find.text('Select from library'), findsNothing);
+    expect(_picker.calls, 1);
+    expect(_picker.extensions, ['pdf']);
+    expect(find.text('Local storage'), findsNothing);
+    expect(find.text('Existing PDF password (if needed)'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'Recent, Library and Edit sit in the bottom navigation on mobile',
     (tester) async {
@@ -139,6 +142,29 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('a completed edit returns to Recent', (tester) async {
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ReaderApp(preferences: ReaderPreferences(), repository: _TestLibrary()),
+    );
+    await settleApp(tester);
+    await tester.tap(find.text('Edit'));
+    await settleApp(tester);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      2,
+    );
+    editWorkflowCompleted.value++;
+    await settleApp(tester);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+  });
   testWidgets('reading size updates on an already open route', (tester) async {
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     final preferences = ReaderPreferences();
@@ -262,4 +288,27 @@ class _TestLibrary extends MemoryLibrary {
       text: 'Test document',
     ),
   ];
+}
+
+class _EditPicker extends FilePickerPlatform {
+  int calls = 0;
+  List<String>? extensions;
+  @override
+  Future<List<PlatformFile>> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    calls++;
+    extensions = allowedExtensions;
+    return [];
+  }
 }

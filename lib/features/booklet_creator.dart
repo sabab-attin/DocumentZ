@@ -1,12 +1,13 @@
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:archive/archive.dart';
+
+import '../data/edit_output.dart';
+
 import 'package:flutter/material.dart';
 
 import 'package:pdfrx/pdfrx.dart';
-import 'package:printing/printing.dart';
 
-import '../data/document_sharing.dart';
 import '../data/pdf_booklet.dart';
 import '../domain/services.dart';
 
@@ -18,12 +19,14 @@ class BookletCreator extends StatefulWidget {
     required this.repository,
     required this.onSaved,
     this.previewBuilder,
+    this.outputWriter,
   });
   final Uint8List bytes;
   final String title;
   final ImportableLibrary repository;
   final VoidCallback onSaved;
   final Widget Function(Uint8List bytes)? previewBuilder;
+  final EditOutputWriter? outputWriter;
   @override
   State<BookletCreator> createState() => _BookletCreatorState();
 }
@@ -40,8 +43,10 @@ class _BookletCreatorState extends State<BookletCreator> {
   bool rendering = true;
   bool exporting = false;
   bool saving = false;
-  bool savedToLibrary = false;
+  EditOutputSaver? _outputSaver;
+  List<EditedOutput>? _saveOutputs;
   String status = '';
+  String? saveError;
   BookletExport? result;
   @override
   void initState() {
@@ -97,7 +102,8 @@ class _BookletCreatorState extends State<BookletCreator> {
       selected = 0;
       side = 0;
       result = null;
-      savedToLibrary = false;
+      _outputSaver = null;
+      _saveOutputs = null;
     });
     _preview();
   }
@@ -146,6 +152,7 @@ class _BookletCreatorState extends State<BookletCreator> {
     setState(() {
       exporting = true;
       status = 'Creating booklets…';
+      saveError = null;
     });
     try {
       final output =
@@ -166,77 +173,43 @@ class _BookletCreatorState extends State<BookletCreator> {
         exporting = false;
         status = '';
       });
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        builder: (sheet) => SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Booklet ready',
-                    style: Theme.of(sheet).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(output.name),
-                  Text(
-                    output.isZip
-                        ? 'ZIP · Separate booklets'
-                        : 'PDF · Ready to print',
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    leading: const Icon(Icons.save_alt),
-                    title: const Text('Save file'),
-                    onTap: () {
-                      Navigator.pop(sheet);
-                      _saveFile(output);
-                    },
-                  ),
-                  if (!output.isZip)
-                    ListTile(
-                      leading: const Icon(Icons.library_add_outlined),
-                      title: Text(
-                        savedToLibrary ? 'Saved to library' : 'Save to library',
-                      ),
-                      onTap: savedToLibrary
-                          ? null
-                          : () {
-                              Navigator.pop(sheet);
-                              _saveLibrary(output);
-                            },
-                    ),
-                  ListTile(
-                    leading: const Icon(Icons.share_outlined),
-                    title: const Text('Share'),
-                    onTap: () {
-                      Navigator.pop(sheet);
-                      _share(output);
-                    },
-                  ),
-                  if (!output.isZip)
-                    ListTile(
-                      leading: const Icon(Icons.print_outlined),
-                      title: const Text('Print'),
-                      onTap: () {
-                        Navigator.pop(sheet);
-                        _print(output);
-                      },
-                    ),
-                  const SizedBox(height: 8),
-                  _printingTip(sheet),
-                ],
-              ),
-            ),
-          ),
-        ),
+      _outputSaver ??= EditOutputSaver(
+        widget.repository,
+        writer: widget.outputWriter,
       );
+      _saveOutputs ??= output.isZip
+          ? ZipDecoder()
+                .decodeBytes(output.bytes)
+                .files
+                .where((file) => file.isFile)
+                .map(
+                  (file) =>
+                      EditedOutput(file.name, Uint8List.fromList(file.content)),
+                )
+                .toList()
+          : [EditedOutput(output.name, output.bytes)];
+      setState(() {
+        exporting = true;
+        status = 'Saving to Downloads / DocumentZ…';
+      });
+      await _outputSaver!.save(_saveOutputs!);
+      if (!mounted) return;
+      setState(() {
+        exporting = false;
+        saving = false;
+      });
+      widget.onSaved();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.pop(context);
+        }
+      });
     } catch (_) {
-      _message('Could not create the booklet. Your original PDF is unchanged.');
+      if (mounted) {
+        setState(
+          () => saveError = 'Could not save the booklet. Check storage and permissions, then retry.',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -244,68 +217,6 @@ class _BookletCreatorState extends State<BookletCreator> {
           status = '';
         });
       }
-    }
-  }
-
-  void _message(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
-  Future<void> _saveFile(BookletExport output) async {
-    if (saving) return;
-    setState(() => saving = true);
-    try {
-      final path = await FilePicker.saveFile(
-        fileName: output.name,
-        bytes: output.bytes,
-        mimeType: output.isZip ? 'application/zip' : 'application/pdf',
-        dialogTitle: 'Save booklet',
-      );
-      if (path != null) _message('Booklet saved.');
-    } catch (_) {
-      _message('Could not save the booklet. You can try sharing it instead.');
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _saveLibrary(BookletExport output) async {
-    if (saving || savedToLibrary) return;
-    setState(() => saving = true);
-    try {
-      await widget.repository.importDocument(
-        output.name,
-        Stream.value(output.bytes),
-      );
-      widget.onSaved();
-      if (mounted) setState(() => savedToLibrary = true);
-      _message('Booklet saved to library.');
-    } catch (_) {
-      _message('Could not save to the library. Try again.');
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _share(BookletExport output) async {
-    try {
-      await shareBytes(context, output.bytes, output.name);
-    } catch (_) {
-      _message('Could not share the booklet. Try saving the file.');
-    }
-  }
-
-  Future<void> _print(BookletExport output) async {
-    try {
-      await Printing.layoutPdf(
-        name: output.name,
-        onLayout: (_) async => output.bytes,
-      );
-    } catch (_) {
-      _message('Could not open printing. Save the PDF and print it later.');
     }
   }
 
@@ -526,6 +437,16 @@ class _BookletCreatorState extends State<BookletCreator> {
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                   child: Column(
                     children: [
+                      if (saveError != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            saveError!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ),
                       if (blocked) ...[
                         const LinearProgressIndicator(),
                         Text(status.isEmpty ? 'Saving…' : status),
@@ -545,7 +466,7 @@ class _BookletCreatorState extends State<BookletCreator> {
                           label: Text(
                             result == null
                                 ? 'Create booklet${plan.length > 1 ? 's' : ''}'
-                                : 'Save or share booklet',
+                                : 'Save booklet',
                           ),
                         ),
                       ),

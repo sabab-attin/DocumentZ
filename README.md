@@ -11,7 +11,7 @@ DocumentZ is available for Android and Windows. Your documents stay on your devi
 - **Read:** Open PDFs, EPUBs, Markdown, text, images and supported Office files. On Android, open supported documents directly from a file manager or Share menu. Search within documents, follow links and save bookmarks.
 - **Make it comfortable:** Adjust fonts, text size, alignment and zoom. Choose light or dark pages, paper textures for ebooks and fullscreen reading.
 - **Annotate:** Highlight, underline, strike through, draw and add notes with image attachments. Keep your marks and bookmarks between sessions.
-- **Edit PDFs:** Merge, split, extract, reorder, rotate and delete pages. Compress files, create booklets, fill supported forms, add signatures and redact areas.
+- **Edit PDFs:** Merge, split, extract, reorder, rotate and delete pages. Compress files, create booklets, fill supported forms, add signatures and redact areas. Choose files directly from storage; finished copies save to Downloads / DocumentZ and appear in Recent.
 - **Sync across devices:** Pair by QR and exchange saved annotations and bookmarks. Nearby Android phones connect without a shared Wi-Fi network or hotspot; Windows uses local-network sync.
 - **Keep files organized:** Browse your library, search device documents and return to recent files with reading progress. Android saves its document index and picks up new downloads and file changes automatically.
 - **Stay up to date:** Check for Android updates in Settings, or enable notifications for new GitHub releases.

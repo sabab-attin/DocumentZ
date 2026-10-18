@@ -49,6 +49,7 @@ void main() {
                       builder: (_) => PdfPagePicker(
                         bytes: Uint8List(0),
                         title: 'Choose page',
+                        previewBuilder: (page) => Text('Preview page $page'),
                         documentLoader: () async => _PreviewDocument(400),
                       ),
                     ),
@@ -90,6 +91,7 @@ void main() {
                       bytes: Uint8List(0),
                       title: 'Rotate',
                       multiple: true,
+                      previewBuilder: (page) => Text('Preview page $page'),
                       documentLoader: () async => _PreviewDocument(3),
                     ),
                   ),

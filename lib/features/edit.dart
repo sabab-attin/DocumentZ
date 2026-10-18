@@ -1,3 +1,4 @@
+import 'pdf_extraction_mode.dart';
 import 'pdf_compression_screen.dart';
 
 import 'dart:typed_data';
@@ -5,7 +6,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:printing/printing.dart';
+import 'package:archive/archive.dart';
+
+import '../data/edit_output.dart';
+import 'pdf_link_preview.dart';
+
 import 'package:signature/signature.dart';
 
 import 'edit_sources.dart';
@@ -16,7 +21,6 @@ import '../domain/services.dart';
 import '../domain/book.dart';
 import '../data/pdf_editing.dart';
 import '../data/mobile_pdf.dart';
-import '../data/document_sharing.dart';
 import 'pdf_region_picker.dart';
 import 'pdf_page_organizer.dart';
 import 'pdf_page_picker.dart';
@@ -97,91 +101,36 @@ class _EditScreenState extends State<EditScreen> {
     return null;
   }
 
+  bool _running = false;
+  bool _savedInRun = false;
+  void _didSave() => _savedInRun = true;
   Future<void> run(String action) async {
+    if (_running || busy) return;
+    _running = true;
+    _savedInRun = false;
+    try {
+      await _run(action);
+    } finally {
+      _running = false;
+      if (_savedInRun && mounted) {
+        widget.onSaved();
+        editWorkflowCompleted.value++;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    }
+  }
+
+  Future<void> _run(String action) async {
     if (busy) return;
     if (action == 'Annotate') {
-      Book? target = widget.initialDocument;
-      if (widget.initialDocuments.length == 1) {
-        target = widget.initialDocuments.single;
-      }
-      if (widget.initialDocuments.length > 1) {
-        target = await showModalBottomSheet<Book>(
-          context: context,
-          builder: (sheet) => SafeArea(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                const ListTile(title: Text('Choose document to annotate')),
-                for (final book in widget.initialDocuments)
-                  ListTile(
-                    title: Text(book.title),
-                    onTap: () => Navigator.pop(sheet, book),
-                  ),
-              ],
-            ),
-          ),
-        );
-        if (target == null || !mounted) return;
-      }
-      if (!mounted) return;
-      await openAnnotationWorkspace(context, widget.repository, book: target);
+      final opened = await openAnnotationWorkspace(
+        context,
+        widget.repository,
+        book: widget.initialDocument,
+        books: widget.initialDocuments,
+      );
+      if (opened) _didSave();
       return;
-    }
-    final choices = switch (action) {
-      'Export' => ['Word (text)', 'Excel (text rows)', 'Page images'],
-      'Content' => [
-        'Add text',
-        'Replace text area',
-        'Insert image',
-        'Replace image area',
-        'Remove area',
-      ],
-      'Split' => ['Extract pages', 'Split into files'],
-      _ => <String>[],
-    };
-    if (choices.isNotEmpty) {
-      final selected = await showModalBottomSheet<String>(
-        context: context,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final choice in choices)
-                ListTile(
-                  title: Text(choice),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.pop(context, choice),
-                ),
-            ],
-          ),
-        ),
-      );
-      if (selected == null || !mounted) return;
-      action = selected;
-    }
-    if (action == 'Signature') {
-      final kind = await showModalBottomSheet<String>(
-        context: context,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.verified_outlined),
-                title: const Text('Digital signature'),
-                onTap: () => Navigator.pop(context, 'Digital signature'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.draw_outlined),
-                title: const Text('Create signature'),
-                onTap: () => Navigator.pop(context, 'Drawn signature'),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (kind == null || !mounted) return;
-      action = kind;
     }
     if (action == 'Create PDF' || action == 'Scan') {
       await _process(action, []);
@@ -231,6 +180,62 @@ class _EditScreenState extends State<EditScreen> {
         inputs = await chooseEditSources(context, widget.repository, action);
       }
       if (!mounted || inputs.isEmpty) return;
+      final choices = switch (action) {
+        'Export' => ['Word (text)', 'Excel (text rows)', 'Page images'],
+        'Content' => [
+          'Add text',
+          'Replace text area',
+          'Insert image',
+          'Replace image area',
+          'Remove area',
+        ],
+        _ => <String>[],
+      };
+      if (choices.isNotEmpty) {
+        final selected = await showModalBottomSheet<String>(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final choice in choices)
+                  ListTile(
+                    title: Text(choice),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(context, choice),
+                  ),
+              ],
+            ),
+          ),
+        );
+        if (selected == null || !mounted) return;
+        action = selected;
+      }
+      if (action == 'Signature') {
+        final kind = await showModalBottomSheet<String>(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.verified_outlined),
+                  title: const Text('Digital signature'),
+                  onTap: () => Navigator.pop(context, 'Digital signature'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.draw_outlined),
+                  title: const Text('Create signature'),
+                  onTap: () => Navigator.pop(context, 'Drawn signature'),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (kind == null || !mounted) return;
+        action = kind;
+      }
+
       if (action == 'Merge') {
         await _process(action, inputs);
       } else {
@@ -332,7 +337,7 @@ class _EditScreenState extends State<EditScreen> {
                 bytes: original,
                 title: selected.first.title,
                 repository: library,
-                onSaved: widget.onSaved,
+                onSaved: _didSave,
               ),
             ),
           );
@@ -348,7 +353,7 @@ class _EditScreenState extends State<EditScreen> {
                 bytes: bytes,
                 title: selected.first.title,
                 repository: library,
-                onSaved: widget.onSaved,
+                onSaved: _didSave,
               ),
             ),
           );
@@ -374,27 +379,32 @@ class _EditScreenState extends State<EditScreen> {
               : 'zip';
           final filename =
               '${selected.first.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.$suffix';
-          await showDialog<void>(
-            context: context,
-            builder: (dialogContext) => AlertDialog(
-              title: const Text('Export ready'),
-              content: Text(
-                action == 'Page images'
-                    ? 'Each page is a PNG image in the ZIP file.'
-                    : action == 'Word (text)'
-                    ? 'Editable text with page breaks. Original columns, images, and fonts are not reproduced.'
-                    : 'Page, line, and text columns. Original PDF tables are not reconstructed.',
+          final outputs = action == 'Page images'
+              ? ZipDecoder()
+                    .decodeBytes(result)
+                    .files
+                    .where((file) => file.isFile)
+                    .map(
+                      (file) => EditedOutput(
+                        file.name,
+                        Uint8List.fromList(file.content),
+                      ),
+                    )
+                    .toList()
+              : [EditedOutput(filename, result)];
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PdfResultScreen(
+                bytes: bytes,
+                name: selected.first.title,
+                outputs: outputs,
+                repository: library,
+                onSaved: _didSave,
+                message: action == 'Page images'
+                    ? 'Each selected output is saved as a PNG image.'
+                    : 'Text export. Original page layout may differ.',
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Close'),
-                ),
-                FilledButton(
-                  onPressed: () => shareBytes(dialogContext, result, filename),
-                  child: const Text('Share export'),
-                ),
-              ],
             ),
           );
           return;
@@ -461,6 +471,7 @@ class _EditScreenState extends State<EditScreen> {
             }
             output = await PdfEditing.extract(inputs, password: password);
           case 'Organize':
+          case 'Split':
           case 'Extract pages':
           case 'Split into files':
             if (!mounted) return;
@@ -475,33 +486,57 @@ class _EditScreenState extends State<EditScreen> {
                             ? 'Select pages to extract'
                             : 'Select pages to split',
                         multiple: true,
-                        confirmLabel: action == 'Extract pages'
-                            ? 'Extract'
-                            : 'Split',
+                        confirmLabel: 'Continue with',
                       ),
               ),
             );
             if (order == null || !mounted) return;
-            if (action == 'Split into files') {
-              for (final index in order) {
-                final part = await PdfEditing.extract(
-                  [bytes],
-                  pageOrder: [index],
-                );
-                if (!mounted) return;
-                await Navigator.push<void>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PdfResultScreen(
-                      bytes: part,
-                      name: '${selected.first.title} - Page ${index + 1}',
-                      repository: library,
-                      onSaved: widget.onSaved,
-                      message: 'Original page copied. DocumentZ annotations remain with the original file.',
+            if (order.isEmpty) return;
+            if (action != 'Organize') {
+              final separate = await chooseExtractionMode(
+                context,
+                order.length,
+              );
+              if (separate == null || !mounted) return;
+              final outputs = <EditedOutput>[];
+              if (separate == PdfExtractionMode.separate) {
+                for (final index in order) {
+                  final part = await PdfEditing.extract(
+                    [bytes],
+                    pageOrder: [index],
+                  );
+                  outputs.add(
+                    EditedOutput(
+                      '${selected.first.title} - Page ${index + 1}.pdf',
+                      part,
                     ),
+                  );
+                }
+              } else {
+                final part = await PdfEditing.extract([
+                  bytes,
+                ], pageOrder: order);
+                outputs.add(
+                  EditedOutput(
+                    '${selected.first.title} - Extracted pages.pdf',
+                    part,
                   ),
                 );
               }
+              if (!mounted) return;
+              await Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PdfResultScreen(
+                    bytes: outputs.first.bytes,
+                    name: selected.first.title,
+                    repository: library,
+                    onSaved: _didSave,
+                    outputs: outputs,
+                    autoSave: true,
+                  ),
+                ),
+              );
               return;
             }
             output = await PdfEditing.extract([bytes], pageOrder: order);
@@ -725,7 +760,7 @@ class _EditScreenState extends State<EditScreen> {
             previewBytes: preview,
             name: name,
             repository: library,
-            onSaved: widget.onSaved,
+            onSaved: _didSave,
             message: action == 'Redact'
                 ? 'This copy contains flattened images. Text, forms, links, and old annotations are removed.'
                 : action == 'Encrypt'
@@ -848,10 +883,18 @@ class PdfResultScreen extends StatefulWidget {
     required this.repository,
     required this.onSaved,
     this.previewBytes,
+    this.outputs,
+    this.autoSave = false,
+    this.outputWriter,
+    this.previewBuilder,
     this.message,
   });
   final Uint8List bytes;
   final Uint8List? previewBytes;
+  final List<EditedOutput>? outputs;
+  final bool autoSave;
+  final EditOutputWriter? outputWriter;
+  final Widget Function(Uint8List bytes)? previewBuilder;
   final String name;
   final String? message;
   final ImportableLibrary repository;
@@ -862,20 +905,46 @@ class PdfResultScreen extends StatefulWidget {
 
 class _PdfResultScreenState extends State<PdfResultScreen> {
   bool saving = false, saved = false, discarded = false, asking = false;
+  String? saveError;
+  late final saver = EditOutputSaver(
+    widget.repository,
+    writer: widget.outputWriter,
+  );
+  late final outputs =
+      widget.outputs ?? [EditedOutput('${widget.name}.pdf', widget.bytes)];
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoSave) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _saveCopy();
+        }
+      });
+    }
+  }
+
   Future<void> _saveCopy() async {
     if (saving || saved) return;
-    setState(() => saving = true);
+    setState(() {
+      saving = true;
+      saveError = null;
+    });
     try {
-      await widget.repository.importDocument(
-        '${widget.name}.pdf',
-        Stream.value(widget.bytes),
-      );
-      widget.onSaved();
-      if (mounted) setState(() => saved = true);
+      await saver.save(outputs);
+      if (!mounted) return;
+      setState(() => saved = true);
+      // Let PopScope rebuild before completing this route.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.onSaved();
+        Navigator.pop(context);
+      });
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save this copy.')),
+        setState(
+          () => saveError =
+              'Save failed. Check storage and permissions, then retry.',
         );
       }
     } finally {
@@ -887,39 +956,29 @@ class _PdfResultScreenState extends State<PdfResultScreen> {
     if (asking || saving) return;
     asking = true;
     try {
-      final choice = await showDialog<String>(
+      final discard = await showDialog<bool>(
         context: context,
         builder: (dialog) => AlertDialog(
-          title: const Text('Save changes?'),
-          content: const Text(
-            'Save the edited document as a copy before leaving.',
-          ),
+          title: const Text('Discard this edit?'),
+          content: const Text('The original file is unchanged.'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialog),
+              onPressed: () => Navigator.pop(dialog, false),
               child: const Text('Keep editing'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(dialog, 'discard'),
+              onPressed: () => Navigator.pop(dialog, true),
               child: const Text('Discard'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialog, 'save'),
-              child: const Text('Save'),
             ),
           ],
         ),
       );
-      if (!mounted || choice == null) return;
-      if (choice == 'save') {
-        await _saveCopy();
-        if (!saved) return;
+      if (discard == true && mounted) {
+        setState(() => discarded = true);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.pop(context);
+        });
       }
-      if (!mounted) return;
-      setState(() => discarded = choice == 'discard');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.pop(context);
-      });
     } finally {
       asking = false;
     }
@@ -932,30 +991,7 @@ class _PdfResultScreenState extends State<PdfResultScreen> {
       if (!didPop) _confirmExit();
     },
     child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Preview'),
-        actions: [
-          IconButton(
-            tooltip: 'Share PDF',
-            onPressed: () async {
-              try {
-                await shareBytes(
-                  context,
-                  widget.bytes,
-                  '${widget.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.pdf',
-                );
-              } catch (_) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Could not share PDF.')),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.share_outlined),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Preview')),
       body: Column(
         children: [
           if (widget.message != null)
@@ -964,26 +1000,34 @@ class _PdfResultScreenState extends State<PdfResultScreen> {
               child: Text(widget.message!),
             ),
           Expanded(
-            child: PdfPreview(
-              build: (_) async => widget.previewBytes ?? widget.bytes,
-              allowPrinting: widget.previewBytes == null,
-              allowSharing: false,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-            ),
+            child:
+                widget.previewBuilder?.call(
+                  widget.previewBytes ?? widget.bytes,
+                ) ??
+                PdfLinkPreview(bytes: widget.previewBytes ?? widget.bytes),
           ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: FilledButton(
-                onPressed: saving || saved ? null : _saveCopy,
-                child: Text(
-                  saved
-                      ? 'Saved to Library'
-                      : saving
-                      ? 'Saving…'
-                      : 'Save copy to Library',
-                ),
+              child: Column(
+                children: [
+                  const Text('Saves to Downloads / DocumentZ and Recent'),
+                  if (saveError != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        saveError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  FilledButton.icon(
+                    onPressed: saving || saved ? null : _saveCopy,
+                    icon: const Icon(Icons.save_alt),
+                    label: Text(saving ? 'Saving…' : 'Save'),
+                  ),
+                ],
               ),
             ),
           ),

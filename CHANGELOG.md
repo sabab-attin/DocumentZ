@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 — 2026-10-19
+
+- Open the system file picker directly from editing tools, with multiple file selection.
+- Keep PDF links active in extraction and result previews.
+- Choose a single PDF or separate page files after selecting pages to extract.
+- Save edited copies to Downloads / DocumentZ, add them to Recent and return there after saving.
+- Use the same save flow for compression, booklets and exports; retain failed results for retry.
+
 ## 1.0.4 — 2026-10-17
 
 - Open supported documents from Android file managers and Share menus.

@@ -1,3 +1,4 @@
+import 'data/edit_output.dart';
 import 'data/automatic_device_changes.dart';
 import 'data/external_documents.dart';
 import 'data/external_document_import.dart';
@@ -64,6 +65,7 @@ class _ReaderShellState extends State<ReaderShell> {
   @override
   void initState() {
     super.initState();
+    editWorkflowCompleted.addListener(_editFinished);
     final library = repository;
     if (library is ImportableLibrary) {
       syncSession = AnnotationSyncSession.forLibrary(library);
@@ -73,8 +75,19 @@ class _ReaderShellState extends State<ReaderShell> {
     }
   }
 
+  void _editFinished() {
+    if (mounted) {
+      setState(() {
+        selected = 0;
+        visitedTabs.add(0);
+        libraryRevision++;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    editWorkflowCompleted.removeListener(_editFinished);
     AutomaticDeviceChanges.stop();
     ExternalDocuments.stop();
     SyncPairingLinks.stop();

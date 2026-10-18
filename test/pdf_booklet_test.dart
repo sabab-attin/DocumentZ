@@ -1,3 +1,6 @@
+import 'package:documentz/data/recent_documents.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -164,8 +167,11 @@ void main() {
     'preview switches front and back before export, then saves a copy',
     (tester) async {
       final bytes = await numberedPdf(4);
+      SharedPreferences.setMockInitialValues({});
+      RecentDocuments.instance.resetForTests();
       final library = BrowserLibrary();
       var saved = 0;
+      var attempts = 0;
       await tester.pumpWidget(
         MaterialApp(
           home: BookletCreator(
@@ -173,6 +179,14 @@ void main() {
             title: 'Four',
             repository: library,
             onSaved: () => saved++,
+            outputWriter: (outputs) async {
+              if (++attempts == 1) {
+                throw StateError('Storage temporarily unavailable');
+              }
+              return outputs
+                  .map((output) => '/downloads/${output.name}')
+                  .toList();
+            },
             previewBuilder: (data) =>
                 const Center(child: Text('Interactive sheet preview')),
           ),
@@ -200,9 +214,24 @@ void main() {
       expect(find.text('Right: Page 3'), findsOneWidget);
       await tester.tap(find.byKey(const Key('create-booklet')));
       await tester.pumpAndSettle();
-      expect(find.text('Booklet ready'), findsOneWidget);
+      expect(
+        find.text(
+          'Could not save the booklet. Check storage and permissions, then retry.',
+        ),
+        findsOneWidget,
+      );
+      expect(saved, 0);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(
+        find.byKey(const Key('create-booklet')).hitTestable(),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('create-booklet')));
+      await tester.pumpAndSettle();
+      expect(find.text('Save to library'), findsNothing);
+      expect(find.text('Share'), findsNothing);
       expect(find.byType(LinearProgressIndicator), findsNothing);
-      await tester.tap(find.text('Save to library'));
+      expect(RecentDocuments.instance.accessed, hasLength(1));
       await tester.pumpAndSettle();
       expect(saved, 1);
       expect((await library.listBooks()).length, 1);

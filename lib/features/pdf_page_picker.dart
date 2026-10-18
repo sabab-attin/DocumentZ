@@ -1,3 +1,5 @@
+import 'pdf_link_preview.dart';
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -14,6 +16,7 @@ class PdfPagePicker extends StatefulWidget {
     this.multiple = false,
     this.confirmLabel,
     this.documentLoader,
+    this.previewBuilder,
     this.initialSelection = const [],
   });
   final Uint8List bytes;
@@ -21,6 +24,7 @@ class PdfPagePicker extends StatefulWidget {
   final bool multiple;
   final String? confirmLabel;
   final Future<PdfDocument> Function()? documentLoader;
+  final Widget Function(int page)? previewBuilder;
   final List<int> initialSelection;
   @override
   State<PdfPagePicker> createState() => _PdfPagePickerState();
@@ -30,7 +34,7 @@ class _PdfPagePickerState extends State<PdfPagePicker> {
   PdfDocument? document;
   String? error;
   final number = TextEditingController(text: '1');
-  final preview = PageController();
+  final preview = PdfViewerController();
   final chosen = <int>{};
   int current = 0;
   bool grid = true;
@@ -63,7 +67,6 @@ class _PdfPagePickerState extends State<PdfPagePicker> {
   @override
   void dispose() {
     number.dispose();
-    preview.dispose();
     document?.dispose();
     super.dispose();
   }
@@ -75,7 +78,9 @@ class _PdfPagePickerState extends State<PdfPagePicker> {
       grid = false;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && preview.hasClients) preview.jumpToPage(index);
+      if (mounted && preview.isReady) {
+        preview.goToPage(pageNumber: index + 1);
+      }
     });
   }
 
@@ -221,28 +226,20 @@ class _PdfPagePickerState extends State<PdfPagePicker> {
                             ),
                           ),
                         )
-                      : PageView.builder(
-                          controller: preview,
-                          itemCount: pages.length,
-                          onPageChanged: (i) => setState(() {
-                            current = i;
-                            number.text = '${i + 1}';
-                          }),
-                          itemBuilder: (context, i) => Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: InteractiveViewer(
-                              minScale: 1,
-                              maxScale: 5,
-                              child: SizedBox.expand(
-                                child: PdfThumbnail(
-                                  key: ValueKey('preview:$i'),
-                                  page: pages[i],
-                                  renderWidth: 1600,
-                                ),
-                              ),
+                      : widget.previewBuilder?.call(current + 1) ??
+                            PdfLinkPreview(
+                              bytes: widget.bytes,
+                              controller: preview,
+                              initialPage: current + 1,
+                              onPageChanged: (page) {
+                                if (mounted) {
+                                  setState(() {
+                                    current = page - 1;
+                                    number.text = '$page';
+                                  });
+                                }
+                              },
                             ),
-                          ),
-                        ),
                 ),
                 SafeArea(
                   child: Padding(
