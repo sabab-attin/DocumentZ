@@ -69,4 +69,6 @@ flutter run
 
 ## Licenses
 
-Review dependency licenses, including Syncfusion's requirements and [font notices](FONT_NOTICE.md). No project-level license has been specified.
+Review dependency licenses, including Syncfusion's requirements and [font notices](FONT_NOTICE.md). Licenses
+
+See [LICENSE](https://github.com/sabab-attin/DocumentZ/blob/main/LICENSE) for the terms covering DocumentZ’s own code.
