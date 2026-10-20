@@ -1,4 +1,5 @@
 import 'ebook_box_layout.dart';
+import '../core/desktop_platform.dart';
 import 'ebook_styles.dart';
 
 import 'package:image/image.dart' as raster;
@@ -182,28 +183,10 @@ class EpubReaderState extends State<EpubReader> {
   }
 
   Future<void> showDisplayModes() async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final mode in ['Single page', 'Dual page', 'Continuous'])
-              ListTile(
-                title: Text(mode),
-                selected: mode == displayMode,
-                leading: Icon(
-                  mode == 'Continuous'
-                      ? Icons.view_day_outlined
-                      : mode == 'Dual page'
-                      ? Icons.menu_book_outlined
-                      : Icons.article_outlined,
-                ),
-                onTap: () => Navigator.pop(sheet, mode),
-              ),
-          ],
-        ),
-      ),
+    final selected = await showReaderDisplayModes(
+      context,
+      selected: displayMode,
+      modes: const ['Single page', 'Dual page', 'Continuous'],
     );
     if (selected == null || !mounted || selected == displayMode) {
       return;
@@ -449,7 +432,7 @@ class EpubReaderState extends State<EpubReader> {
                       alignment != TextAlign.center
                   ? 1
                   : 0;
-              return AnnotatedParagraph(
+              final paragraph = AnnotatedParagraph(
                 key: _searchKeys.putIfAbsent(
                   '${chapter.path}:$block:$column',
                   GlobalKey.new,
@@ -478,6 +461,9 @@ class EpubReaderState extends State<EpubReader> {
                 onSelection: (action) => _selectionAction = action,
                 onLink: (url) => _followLink(book, chapter, url),
               );
+              return isWindowsDesktop
+                  ? BookVisibility(child: paragraph)
+                  : paragraph;
             }
             if (element.localName == 'svg') {
               try {
@@ -929,6 +915,24 @@ class EpubReaderState extends State<EpubReader> {
     super.dispose();
   }
 
+  Future<void> goToPage() async {
+    final book = _navigationDocument ?? await document;
+    if (!mounted) return;
+    final continuous = displayMode == 'Continuous';
+    final page = await showReaderPageNumber(
+      context,
+      current: continuous ? section + 1 : bookPages.page + 1,
+      count: continuous ? book.sections.length : bookPages.count,
+      title: continuous ? 'Go to chapter' : 'Go to page in this chapter',
+    );
+    if (!mounted || page == null) return;
+    if (continuous) {
+      showSection(page - 1);
+    } else {
+      bookPages.jumpToPage(page - 1);
+    }
+  }
+
   void showSection(int index) {
     bookPages.ready = false;
     setState(() => section = index);
@@ -994,6 +998,8 @@ class EpubReaderState extends State<EpubReader> {
           Positioned.fill(
             child: PageTurn(
               key: pageTurn,
+              onTurn: turnSection,
+              wheelPaging: displayMode != 'Continuous',
               paper: paper,
               child: ReaderGestureSurface(
                 session: gestures,
@@ -1043,30 +1049,38 @@ class EpubReaderState extends State<EpubReader> {
                             ).top,
                             bottom: 64 + MediaQuery.paddingOf(context).bottom,
                           ),
-                          child: SingleChildScrollView(
+                          child: Scrollbar(
                             controller: scroll,
-                            physics: widget.activeTool == MarkTool.browse
-                                ? null
-                                : const NeverScrollableScrollPhysics(),
-                            child: Align(
-                              alignment: Alignment.topCenter,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 720,
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    28,
-                                    16,
-                                    28,
-                                    24,
-                                  ),
-                                  child: _chapterContent(
-                                    book,
-                                    chapter,
-                                    bodyStyle,
-                                    ink,
-                                    0,
+                            thumbVisibility: isWindowsDesktop,
+                            interactive: true,
+                            child: SingleChildScrollView(
+                              controller: scroll,
+                              physics: widget.activeTool == MarkTool.browse
+                                  ? null
+                                  : const NeverScrollableScrollPhysics(),
+                              child: BookFlowViewport(
+                                controller: scroll,
+                                child: Align(
+                                  alignment: Alignment.topCenter,
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 720,
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        28,
+                                        16,
+                                        28,
+                                        24,
+                                      ),
+                                      child: _chapterContent(
+                                        book,
+                                        chapter,
+                                        bodyStyle,
+                                        ink,
+                                        0,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1077,15 +1091,30 @@ class EpubReaderState extends State<EpubReader> {
               ),
             ),
           ),
-          Positioned(
-            top: 12,
-            right: 72,
-            child: PageNotesButton(
-              store: widget.annotations,
-              anchor: 'chapter:${section + 1}',
+          if (isWindowsDesktop && displayMode != 'Continuous')
+            Positioned(
+              top: 16,
+              right: 0,
+              bottom: 64,
+              child: ListenableBuilder(
+                listenable: bookPages,
+                builder: (_, _) => DesktopPageRail(
+                  current: bookPages.page,
+                  count: bookPages.count,
+                  onPage: bookPages.jumpToPage,
+                ),
+              ),
             ),
-          ),
-          if (!widget.annotationMode)
+          if (!isWindowsDesktop)
+            Positioned(
+              top: 12,
+              right: 72,
+              child: PageNotesButton(
+                store: widget.annotations,
+                anchor: 'chapter:${section + 1}',
+              ),
+            ),
+          if (!widget.annotationMode || isWindowsDesktop)
             Positioned.fill(
               child: ListenableBuilder(
                 listenable: bookPages,
@@ -1095,8 +1124,9 @@ class EpubReaderState extends State<EpubReader> {
                   label: displayMode == 'Continuous'
                       ? '${section + 1} / ${book.sections.length}'
                       : !bookPages.ready
-                      ? '${chapter.title} · …'
-                      : '${chapter.title} · ${bookPages.page + 1}${bookPages.columns == 2 && bookPages.page + 1 < bookPages.count ? '–${bookPages.page + 2}' : ''} / ${bookPages.count}',
+                      ? '${chapter.title} \u00b7 \u2026'
+                      : '${chapter.title} \u00b7 ${bookPages.page + 1}${bookPages.columns == 2 && bookPages.page + 1 < bookPages.count ? '\u2013${bookPages.page + 2}' : ''} / ${bookPages.count}',
+                  onPageTap: isWindowsDesktop ? goToPage : null,
                   onPrevious: () => turnSection(-1),
                   onNext: () => turnSection(1),
                 ),

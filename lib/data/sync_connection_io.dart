@@ -46,6 +46,7 @@ Future<({Socket socket, String address})> connectSyncAddresses(
   required bool Function() active,
   void Function(int attempt, int total)? onAttempt,
   Duration timeout = const Duration(seconds: 4),
+  Future<Socket> Function(InternetAddress, int, Duration)? connector,
 }) async {
   if (candidates.isEmpty || candidates.length > 8) {
     throw const FormatException(
@@ -85,11 +86,13 @@ Future<({Socket socket, String address})> connectSyncAddresses(
     onAttempt?.call(index + 1, ordered.length);
     Socket socket;
     try {
-      socket = await Socket.connect(
-        candidate.host,
-        candidate.port,
-        timeout: timeout,
-      );
+      socket = connector == null
+          ? await Socket.connect(
+              candidate.host,
+              candidate.port,
+              timeout: timeout,
+            )
+          : await connector(candidate.host, candidate.port, timeout);
     } on SocketException {
       continue;
     } on TimeoutException {
@@ -107,4 +110,24 @@ Future<({Socket socket, String address})> connectSyncAddresses(
   throw const FormatException(
     'Could not reach the other device at any supplied address. Keep both apps open on the same Wi-Fi or phone hotspot. Allow local-network access in any VPN, or temporarily disconnect the VPN. Guest Wi-Fi may block devices from connecting; use a phone hotspot instead.',
   );
+}
+
+/// Keep production ports inside the executable-scoped installer firewall rule.
+Future<ServerSocket> bindSyncServer({
+  bool loopback = false,
+  Future<ServerSocket> Function(InternetAddress, int)? binder,
+}) async {
+  final bind =
+      binder ??
+      (InternetAddress address, int port) => ServerSocket.bind(address, port);
+  if (loopback) return bind(InternetAddress.loopbackIPv4, 0);
+  SocketException? last;
+  for (var port = 45831; port <= 45839; port++) {
+    try {
+      return await bind(InternetAddress.anyIPv4, port);
+    } on SocketException catch (error) {
+      last = error;
+    }
+  }
+  throw last ?? const SocketException('No local sync port is available.');
 }

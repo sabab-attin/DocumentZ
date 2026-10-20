@@ -1,3 +1,6 @@
+import '../core/desktop_platform.dart';
+import 'desktop_page_input.dart';
+
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -8,8 +11,16 @@ import 'package:flutter/rendering.dart';
 /// A textured cylindrical paper mesh bends the snapshot without rerendering the
 /// document on each frame. The underside is paper, rather than a moving curtain.
 class PageTurn extends StatefulWidget {
-  const PageTurn({super.key, required this.child, required this.paper});
+  const PageTurn({
+    super.key,
+    required this.child,
+    required this.paper,
+    this.onTurn,
+    this.wheelPaging = false,
+  });
   final Widget child;
+  final Future<void> Function(int)? onTurn;
+  final bool wheelPaging;
   final Color paper;
   @override
   State<PageTurn> createState() => PageTurnState();
@@ -26,6 +37,7 @@ class PageTurnState extends State<PageTurn>
   ui.ImageShader? snapshotShader;
   int direction = 1;
   bool busy = false;
+  bool _desktopTransition = false;
   Future<void> turn(int nextDirection, VoidCallback changePage) async {
     if (busy) return;
     if (MediaQuery.of(context).disableAnimations) {
@@ -33,6 +45,25 @@ class PageTurnState extends State<PageTurn>
       return;
     }
     busy = true;
+    if (isWindowsDesktop) {
+      try {
+        animation.value = 0;
+        setState(() {
+          direction = nextDirection;
+          _desktopTransition = true;
+        });
+        changePage();
+        await animation.animateTo(
+          1,
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+        );
+      } finally {
+        if (mounted) setState(() => _desktopTransition = false);
+        busy = false;
+      }
+      return;
+    }
     try {
       final box =
           boundary.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -99,28 +130,51 @@ class PageTurnState extends State<PageTurn>
   }
 
   @override
-  Widget build(BuildContext context) => Stack(
-    children: [
-      Positioned.fill(
-        child: RepaintBoundary(key: boundary, child: widget.child),
-      ),
-      if (snapshot != null)
+  Widget build(BuildContext context) => DesktopPageInput(
+    onTurn: widget.onTurn,
+    wheelPaging: widget.wheelPaging,
+    child: Stack(
+      children: [
         Positioned.fill(
-          child: IgnorePointer(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _CurlPainter(
-                  snapshot!,
-                  snapshotShader!,
-                  animation,
-                  direction,
-                  widget.paper,
+          child: AnimatedBuilder(
+            animation: animation,
+            child: RepaintBoundary(key: boundary, child: widget.child),
+            builder: (context, child) => !isWindowsDesktop
+                ? child!
+                : ClipRect(
+                    child: ColoredBox(
+                      color: widget.paper,
+                      child: Transform.translate(
+                        offset: Offset(
+                          _desktopTransition
+                              ? direction * (1 - animation.value) * 64
+                              : 0,
+                          0,
+                        ),
+                        child: child,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+        if (snapshot != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CurlPainter(
+                    snapshot!,
+                    snapshotShader!,
+                    animation,
+                    direction,
+                    widget.paper,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-    ],
+      ],
+    ),
   );
 }
 

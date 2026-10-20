@@ -15,7 +15,7 @@ This is short-range pairing, not remote internet sync. Both phones need current 
 
 ## Computer / local network mode
 
-Switch sync off, select Computer / local network on the Android phone, then enable sync on both devices. This existing mode requires a reachable shared local network. Pair using its QR or displayed local address and one-time code. Windows Firewall may require private-network access. TCP normally uses 45831, with an available port as fallback; UDP discovery uses 45832. Guest-network isolation can block this mode. The Android phone-to-phone nearby mode avoids that IP setup.
+Switch sync off, select Computer / local network on the Android phone, then enable sync on both devices. This existing mode requires a reachable shared local network. Pair using its QR or displayed local address and one-time code. The Windows installer registers local-subnet firewall access for its installed executable on Public and Private profiles. TCP uses the first available port from 45831–45839; UDP discovery uses 45832. Android local-network connections prefer a matching Wi-Fi interface and retain normal system routing when a VPN is active. Guest-network isolation can block this mode. The Android phone-to-phone nearby mode avoids that IP setup.
 
 ## What is exchanged
 

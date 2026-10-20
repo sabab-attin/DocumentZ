@@ -216,6 +216,11 @@ void main() {
     await settleApp(tester);
     await tester.pageBack();
     await settleApp(tester);
+    expect(find.byType(ReaderScreen), findsOneWidget);
+    expect(find.byTooltip('Close reading menu'), findsNothing);
+    await tester.pageBack();
+    await settleApp(tester);
+    expect(find.byType(ReaderScreen), findsNothing);
     await tester.enterText(find.byType(TextField), 'missing');
     await tester.pump();
     expect(find.text('No documents found.'), findsOneWidget);

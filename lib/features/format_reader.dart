@@ -1,4 +1,5 @@
 import 'reader_pdf_conversion.dart';
+import '../core/desktop_platform.dart';
 import 'reading_typography.dart';
 import 'annotation_color_picker.dart';
 import 'highlighter_icon.dart';
@@ -473,6 +474,7 @@ class _FormatReaderState extends State<FormatReader> {
       );
     }
     return ReaderControlsOverlay(
+      onTurn: (direction) async => epub.currentState?.turnSection(direction),
       controls: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -513,6 +515,61 @@ class _FormatReaderState extends State<FormatReader> {
                   epub.currentState?.showDisplayModes();
                 },
               ),
+              if (isWindowsDesktop) ...[
+                ReaderMenuAction(
+                  label: 'Go to page',
+                  icon: Icons.auto_stories_outlined,
+                  onTap: () => epub.currentState?.goToPage(),
+                ),
+                ReaderMenuAction(
+                  label: 'Save annotations',
+                  icon: Icons.save_outlined,
+                  onTap: () async {
+                    final saved = await annotations.commit();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            saved ? 'Annotations saved.' : 'Could not save annotations. Please try again.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                ReaderMenuAction(
+                  label: 'Undo',
+                  icon: Icons.undo,
+                  onTap: () => annotations.undo(
+                    'chapter:${(epub.currentState?.section ?? 0) + 1}',
+                  ),
+                ),
+                for (final entry in const {
+                  MarkTool.pen: (Icons.draw_outlined, 'Draw'),
+                  MarkTool.eraser: (Icons.auto_fix_normal, 'Eraser'),
+                  MarkTool.rectangle: (Icons.crop_square, 'Rectangle'),
+                  MarkTool.arrow: (Icons.north_east, 'Arrow'),
+                }.entries)
+                  ReaderMenuAction(
+                    label: entry.value.$2,
+                    icon: entry.value.$1,
+                    selected: tool == entry.key,
+                    onTap: () => setState(() {
+                      tool = entry.key;
+                      _annotationMode = true;
+                    }),
+                  ),
+                ReaderMenuAction(
+                  label: 'Add text',
+                  icon: Icons.text_fields,
+                  onTap: _addText,
+                ),
+                ReaderMenuAction(
+                  label: 'Add image',
+                  icon: Icons.add_photo_alternate_outlined,
+                  onTap: _addImage,
+                ),
+              ],
               TextAlignmentMenu(preferences: widget.preferences),
               ReaderMenuAction(
                 label: 'Colors',
@@ -616,7 +673,7 @@ class _FormatReaderState extends State<FormatReader> {
                   ReadingProgress.instance.record(widget.book.id, value),
             ),
           ),
-          if (_annotationMode)
+          if (_annotationMode && !isWindowsDesktop)
             Positioned(
               bottom: 12,
               left: 12,

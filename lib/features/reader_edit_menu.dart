@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/book.dart';
+import '../core/reader_shortcuts.dart';
 import '../domain/services.dart';
 import '../data/mobile_pdf.dart';
 import 'edit.dart';
@@ -79,44 +80,69 @@ class ReaderEditMenu extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) => ExpansionTile(
-    tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-    leading: const Icon(Icons.edit_document, color: readerPanelInk),
-    title: Text(
-      book.format == BookFormat.pdf ? 'Edit document' : 'PDF tools',
-      style: const TextStyle(
-        color: readerPanelInk,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-    iconColor: readerPanelInk,
-    collapsedIconColor: readerPanelInk,
-    shape: const Border(),
-    collapsedShape: const Border(),
-    children: [
-      _group(context, 'Annotations', const {'Annotate': Icons.draw_outlined}),
-      _group(context, 'Pages', const {
-        'Merge': Icons.merge,
-        'Split': Icons.call_split,
-        'Organize': Icons.dashboard_outlined,
-        'Create booklet': Icons.menu_book_outlined,
-        'Rotate': Icons.rotate_right,
-      }),
-      _group(context, 'Document', const {
-        'Content': Icons.edit_note,
-        'Fill form': Icons.list_alt,
-        'Export': Icons.ios_share,
-        'Compress PDF': Icons.compress,
-      }),
-      _group(context, 'Sign & protect', const {
-        'Signature': Icons.gesture,
-        'Encrypt': Icons.lock_outline,
-      }),
-      _group(context, 'Create', const {
-        'Create PDF': Icons.note_add_outlined,
-        'Scan': Icons.document_scanner_outlined,
-        'OCR': Icons.text_fields,
-      }),
-    ],
-  );
+  Widget build(BuildContext context) => DesktopActionsScope.of(context) != null
+      ? PopupMenuButton<String>(
+          tooltip: 'Edit document',
+          icon: const Icon(Icons.edit_document, size: 22),
+          onSelected: (action) => _open(context, action),
+          itemBuilder: (_) => [
+            for (final action in const [
+              'Annotate',
+              'Merge',
+              'Split',
+              'Organize',
+              'Create booklet',
+              'Rotate',
+              'Content',
+              'Fill form',
+              'Export',
+              'Compress PDF',
+              'Signature',
+              'Encrypt',
+            ])
+              PopupMenuItem(value: action, child: Text(action)),
+          ],
+        )
+      : ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+          leading: const Icon(Icons.edit_document, color: readerPanelInk),
+          title: Text(
+            book.format == BookFormat.pdf ? 'Edit document' : 'PDF tools',
+            style: const TextStyle(
+              color: readerPanelInk,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          iconColor: readerPanelInk,
+          collapsedIconColor: readerPanelInk,
+          shape: const Border(),
+          collapsedShape: const Border(),
+          children: [
+            _group(context, 'Annotations', const {
+              'Annotate': Icons.draw_outlined,
+            }),
+            _group(context, 'Pages', const {
+              'Merge': Icons.merge,
+              'Split': Icons.call_split,
+              'Organize': Icons.dashboard_outlined,
+              'Create booklet': Icons.menu_book_outlined,
+              'Rotate': Icons.rotate_right,
+            }),
+            _group(context, 'Document', const {
+              'Content': Icons.edit_note,
+              'Fill form': Icons.list_alt,
+              'Export': Icons.ios_share,
+              'Compress PDF': Icons.compress,
+            }),
+            _group(context, 'Sign & protect', const {
+              'Signature': Icons.gesture,
+              'Encrypt': Icons.lock_outline,
+            }),
+            _group(context, 'Create', const {
+              'Create PDF': Icons.note_add_outlined,
+              'Scan': Icons.document_scanner_outlined,
+              'OCR': Icons.text_fields,
+            }),
+          ],
+        );
 }

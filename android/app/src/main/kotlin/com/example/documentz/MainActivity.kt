@@ -5,6 +5,7 @@ import android.net.wifi.WifiManager
 import android.content.Context
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.content.pm.ActivityInfo
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -38,23 +39,48 @@ class MainActivity : FlutterActivity() {
     private var appUpdateBridge: AppUpdateBridge? = null
     private var syncQrBridge: SyncQrBridge? = null
     private var nearbySyncBridge: NearbySyncBridge? = null
+    private var localSyncNetworkBridge: LocalSyncNetworkBridge? = null
     private var immersiveReader = false
+    private var previousReaderOrientation: Int? = null
     private var syncMulticastLock: WifiManager.MulticastLock? = null
     private var networkResult: MethodChannel.Result? = null
     private val networkRequest = 8437
-    private val iconAliases = mapOf(
-        "classic" to "com.example.documentz.LauncherClassic",
-        "kawaii" to "com.example.documentz.LauncherKawaii",
-        "medieval" to "com.example.documentz.LauncherMedieval"
-    )
     private val scanner = Executors.newSingleThreadExecutor()
     private val worker = Executors.newSingleThreadExecutor()
     private var folderResult: MethodChannel.Result? = null
     private val folderRequest = 8432
     private val storageAccess by lazy { DeviceStorageAccess(this) }
 
+    // One primary logo. Old alias names remain solely for installed-app compatibility.
+    private fun migrateLegacyLauncher() {
+        val primary = ComponentName(this, "com.example.documentz.LauncherClassic")
+        val legacy = listOf(
+            ComponentName(this, "com.example.documentz.LauncherKawaii"),
+            ComponentName(this, "com.example.documentz.LauncherMedieval")
+        )
+        try {
+            val needsMigration = packageManager.getComponentEnabledSetting(primary) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
+                legacy.any { packageManager.getComponentEnabledSetting(it) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED }
+            if (!needsMigration) return
+            if (Build.VERSION.SDK_INT >= 33) {
+                packageManager.setComponentEnabledSettings((listOf(primary) + legacy).map { component ->
+                    PackageManager.ComponentEnabledSetting(component,
+                        if (component == primary) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        PackageManager.DONT_KILL_APP)
+                })
+            } else {
+                packageManager.setComponentEnabledSetting(primary, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+                legacy.forEach { packageManager.setComponentEnabledSetting(it, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP) }
+            }
+        } catch (error: Exception) {
+            // Every alias already displays the primary logo; preserve a working launcher on failure.
+            android.util.Log.w("DocumentZ", "Could not normalize legacy launcher entries", error)
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        migrateLegacyLauncher()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "documentz/edit_outputs").setMethodCallHandler { call, result ->
             if (call.method != "save") { result.notImplemented() }
             else {
@@ -81,6 +107,8 @@ class MainActivity : FlutterActivity() {
         syncQrBridge = SyncQrBridge(this, flutterEngine)
         nearbySyncBridge?.close()
         nearbySyncBridge = NearbySyncBridge(this, flutterEngine)
+        localSyncNetworkBridge?.close()
+        localSyncNetworkBridge = LocalSyncNetworkBridge(this, flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "documentz/appearance").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
@@ -111,40 +139,19 @@ class MainActivity : FlutterActivity() {
                             requestPermissions(arrayOf(permission), networkRequest)
                         }
                     }
+                    "landscape" -> {
+                        if (call.argument<Boolean>("enabled") == true) {
+                            if (previousReaderOrientation == null) previousReaderOrientation = requestedOrientation
+                            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                        } else {
+                            previousReaderOrientation?.let { requestedOrientation = it }
+                            previousReaderOrientation = null
+                        }
+                        result.success(null)
+                    }
                     "fullscreen" -> {
                         immersiveReader = call.argument<Boolean>("enabled") == true
                         applyReaderSystemBars()
-                        result.success(null)
-                    }
-                    "getIcon" -> {
-                        val selected = iconAliases.entries.firstOrNull {
-                            val state = packageManager.getComponentEnabledSetting(ComponentName(this, it.value))
-                            state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
-                                (it.key == "classic" && state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT)
-                        }?.key ?: "classic"
-                        result.success(selected)
-                    }
-                    "setIcon" -> {
-                        val key = call.argument<String>("icon") ?: throw IllegalArgumentException("Missing icon")
-                        require(iconAliases.containsKey(key)) { "Unknown icon" }
-                        val chosen = iconAliases.getValue(key)
-                        if (Build.VERSION.SDK_INT >= 33) {
-                            packageManager.setComponentEnabledSettings(iconAliases.values.map {
-                                PackageManager.ComponentEnabledSetting(
-                                    ComponentName(this, it),
-                                    if (it == chosen) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                                    PackageManager.DONT_KILL_APP
-                                )
-                            })
-                        } else {
-                            // Enable the new launcher entry before disabling the previous one.
-                            packageManager.setComponentEnabledSetting(ComponentName(this, chosen),
-                                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
-                            iconAliases.values.filter { it != chosen }.forEach {
-                                packageManager.setComponentEnabledSetting(ComponentName(this, it),
-                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
-                            }
-                        }
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -330,6 +337,8 @@ class MainActivity : FlutterActivity() {
         appUpdateBridge = null
         nearbySyncBridge?.close()
         nearbySyncBridge = null
+        localSyncNetworkBridge?.close()
+        localSyncNetworkBridge = null
         syncQrBridge?.close()
         syncQrBridge = null
         if (syncMulticastLock?.isHeld == true) syncMulticastLock?.release()

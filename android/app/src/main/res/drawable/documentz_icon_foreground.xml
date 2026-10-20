@@ -1,1 +1,1 @@
-<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/documentz_foreground" android:inset="4dp"/>
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/documentz_foreground" android:inset="0dp"/>

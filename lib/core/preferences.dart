@@ -5,6 +5,7 @@ import 'dart:ui' show TextAlign;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'themes.dart';
+import 'reader_shortcuts.dart';
 
 enum ReadingAlignment {
   left('Left', TextAlign.left),
@@ -32,6 +33,7 @@ class ReaderPreferences extends ChangeNotifier {
     this.viewingZoom = 1,
   });
   final SharedPreferences? store;
+  late final ReaderShortcuts shortcuts = ReaderShortcuts(store);
   ReaderTheme theme;
   double fontSize;
   bool pageDark;

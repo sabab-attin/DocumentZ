@@ -1,10 +1,12 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, listEquals;
 import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:image/image.dart' as image;
+
+import 'pdf_resource_optimizer.dart';
 
 class PdfCompressionResult {
   const PdfCompressionResult(
@@ -59,9 +61,13 @@ void checkPdfCompressionInput(Uint8List bytes) {
 
 Future<void> validatePdfCompressionInput(Uint8List bytes) =>
     compute(checkPdfCompressionInput, bytes);
-Future<PdfCompressionResult> optimizePdf(Uint8List bytes) =>
-    compute(_optimizePdf, bytes);
-Future<PdfCompressionResult> _optimizePdf(Uint8List bytes) async {
+Future<PdfCompressionResult> optimizePdf(
+  Uint8List bytes, {
+  int? imageQuality,
+  int? maxImageDimension,
+}) => compute(_optimizePdf, (bytes, imageQuality, maxImageDimension));
+Future<PdfCompressionResult> _optimizePdf((Uint8List, int?, int?) job) async {
+  final (bytes, imageQuality, maxImageDimension) = job;
   checkPdfCompressionInput(bytes);
   final source = sf.PdfDocument(inputBytes: bytes);
   sf.PdfDocument? checked;
@@ -84,13 +90,25 @@ Future<PdfCompressionResult> _optimizePdf(Uint8List bytes) async {
         (
           size: source.pages[i].getClientSize(),
           rotation: source.pages[i].rotation,
-          annotations: source.pages[i].annotations.count,
+          annotations: [
+            for (var a = 0; a < source.pages[i].annotations.count; a++)
+              _annotationState(source.pages[i].annotations[a]),
+          ],
           text: extractor.extractText(startPageIndex: i, endPageIndex: i),
         ),
     ];
     final fields = source.form.fields.count, bookmarks = source.bookmarks.count;
     source.fileStructure.incrementalUpdate = false;
     source.compressionLevel = sf.PdfCompressionLevel.best;
+    if (source.fileStructure.version.index >= sf.PdfVersion.version1_5.index) {
+      source.fileStructure.crossReferenceType =
+          sf.PdfCrossReferenceType.crossReferenceStream;
+    }
+    optimizePdfResources(
+      source,
+      imageQuality: imageQuality,
+      maxImageDimension: maxImageDimension ?? 2048,
+    );
     final output = Uint8List.fromList(await source.save());
     if (output.length >= bytes.length) {
       return PdfCompressionResult(bytes, pages: count, imageOnly: false);
@@ -111,7 +129,11 @@ Future<PdfCompressionResult> _optimizePdf(Uint8List bytes) async {
       if ((size.width - original.size.width).abs() > .01 ||
           (size.height - original.size.height).abs() > .01 ||
           page.rotation != original.rotation ||
-          page.annotations.count != original.annotations ||
+          page.annotations.count != original.annotations.length ||
+          !listEquals([
+            for (var a = 0; a < page.annotations.count; a++)
+              _annotationState(page.annotations[a]),
+          ], original.annotations) ||
           after.extractText(startPageIndex: i, endPageIndex: i) !=
               original.text) {
         throw const FormatException(
@@ -192,3 +214,10 @@ Uint8List _resizedJpeg((Uint8List, int, int) job) {
   }
   return Uint8List.fromList(image.encodeJpg(pixels, quality: job.$2));
 }
+
+Object _annotationState(sf.PdfAnnotation annotation) => (
+  annotation.runtimeType.toString(),
+  annotation.bounds,
+  annotation.text,
+  annotation is sf.PdfUriAnnotation ? annotation.uri : null,
+);

@@ -1,3 +1,8 @@
+import 'package:flutter/services.dart';
+
+import '../core/desktop_platform.dart';
+import 'desktop_pdf_layout.dart';
+import 'pdf_viewport_fit.dart';
 import '../data/document_links.dart';
 
 import 'dart:async';
@@ -7,8 +12,6 @@ import 'reader_pdf_conversion.dart';
 import 'annotation_color_picker.dart';
 import 'reading_typography.dart';
 import 'highlighter_icon.dart';
-
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -21,6 +24,7 @@ import '../domain/book.dart';
 import '../domain/services.dart';
 import 'annotations.dart';
 import 'annotation_toolbar.dart';
+import '../core/reader_shortcuts.dart';
 import 'text_mark_geometry.dart';
 import 'pdf_navigation.dart';
 import 'find_match_bar.dart';
@@ -268,7 +272,9 @@ class _DocumentReaderState extends State<DocumentReader> {
         .clamp(1, viewer.pageCount);
     if (target == current) return;
     await pageTurn.currentState?.turn(direction, () {
-      if (_display == 'Dual page' || _display == 'Continuous') {
+      if (isWindowsDesktop ||
+          _display == 'Dual page' ||
+          _display == 'Continuous') {
         _goPage(target);
         return;
       }
@@ -807,21 +813,10 @@ class _DocumentReaderState extends State<DocumentReader> {
   }
 
   Future<void> _displayModes() async {
-    final mode = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final name in ['Continuous', 'Single page', 'Dual page'])
-              ListTile(
-                title: Text(name),
-                selected: _display == name,
-                onTap: () => Navigator.pop(context, name),
-              ),
-          ],
-        ),
-      ),
+    final mode = await showReaderDisplayModes(
+      context,
+      selected: _display,
+      modes: const ['Continuous', 'Single page', 'Dual page'],
     );
     if (mode == null || !mounted) return;
     final target = int.tryParse(anchor.split(':').last) ?? 1;
@@ -836,10 +831,33 @@ class _DocumentReaderState extends State<DocumentReader> {
     });
   }
 
+  Future<void> _pageNumber() async {
+    if (!viewer.isReady) return;
+    final page = await showReaderPageNumber(
+      context,
+      current: viewer.pageNumber ?? 1,
+      count: viewer.pageCount,
+    );
+    if (mounted && page != null && viewer.isReady) _goPage(page);
+  }
+
   void _goPage(int number) {
     if (!viewer.isReady) return;
     final page = number.clamp(1, viewer.pageCount);
-    if (_display == 'Continuous' && widget.preferences.viewingFit != 'custom') {
+    if (isWindowsDesktop &&
+        _display == 'Single page' &&
+        widget.preferences.viewingFit != 'custom') {
+      final area = viewer.layout.pageLayouts[page - 1];
+      final zoom = pdfFitZoom(
+        area,
+        viewer.viewSize,
+        widthOnly: widget.preferences.viewingFit == 'fitWidth',
+      );
+      viewer.value = viewer.makeMatrixInSafeRange(
+        viewer.calcMatrixFor(area.center, zoom: zoom),
+      );
+    } else if (_display == 'Continuous' &&
+        widget.preferences.viewingFit != 'custom') {
       final matrix = viewer.calcMatrixFitWidthForPage(pageNumber: page);
       if (matrix != null) viewer.value = viewer.makeMatrixInSafeRange(matrix);
     } else if (_display == 'Dual page') {
@@ -891,7 +909,21 @@ class _DocumentReaderState extends State<DocumentReader> {
 
   String _shapeText = '';
 
+  Size _desktopViewport = const Size(1280, 720);
+  int? _desktopResizePage;
+  bool get _desktopPagedWheel =>
+      isWindowsDesktop &&
+      _display == 'Single page' &&
+      widget.preferences.viewingFit != 'custom' &&
+      widget.preferences.viewingFit != 'fitWidth';
+
   PdfPageLayout _layout(List<PdfPage> pages, PdfViewerParams params) {
+    if (isWindowsDesktop && _display == 'Single page') {
+      return desktopSinglePdfLayout(
+        pages.map((page) => Size(page.width, page.height)),
+        _desktopViewport,
+      );
+    }
     if (_display == 'Continuous') {
       return continuousPdfLayout(
         pages.map((page) => Size(page.width, page.height)),
@@ -1033,26 +1065,51 @@ class _DocumentReaderState extends State<DocumentReader> {
     }
   }
 
-  void _applyViewing() {
-    if (!viewer.isReady) return;
-    final page = viewer.pageNumber ?? 1;
+  int _viewportEpoch = 0;
+  void _fitViewport(
+    Size size, {
+    Offset? previousCenter,
+    double? previousTop,
+    int? pageOverride,
+  }) {
+    if (!viewer.isReady || size.isEmpty) return;
     final prefs = widget.preferences;
-    final matrix =
-        prefs.viewingFit == 'fitWidth' ||
-            (_display == 'Continuous' && prefs.viewingFit != 'custom')
-        ? viewer.calcMatrixFitWidthForPage(pageNumber: page)
-        : viewer.calcMatrixForRect(
-            viewer.layout.pageLayouts[page - 1],
-            margin: 0,
-          );
+    final page =
+        pageOverride ??
+        int.tryParse(anchor.split(':').last) ??
+        viewer.pageNumber ??
+        1;
+    final area = pdfVisiblePageArea(
+      viewer.layout.pageLayouts,
+      page,
+      dual: _display == 'Dual page',
+    );
+    if (area.isEmpty) return;
+    final double zoom;
+    final Offset center;
     if (prefs.viewingFit == 'custom') {
-      viewer.setZoom(
-        viewer.layout.pageLayouts[page - 1].center,
-        prefs.viewingZoom.clamp(viewer.minScale, viewer.maxScale),
-      );
-    } else if (matrix != null) {
-      viewer.value = viewer.makeMatrixInSafeRange(matrix);
+      zoom = previousCenter == null
+          ? prefs.viewingZoom.clamp(viewer.minScale, viewer.maxScale).toDouble()
+          : viewer.currentZoom;
+      center = previousCenter ?? area.center;
+    } else if (_display == 'Continuous') {
+      final width = viewer.layout.documentSize.width;
+      if (width <= 0) return;
+      zoom = size.width / width;
+      // Keep the first visible source line stable when the toolbar or system
+      // bars change height. Initial fit starts at the page top, not its middle.
+      center = pdfWidthFittedCenter(width, size, previousTop ?? area.top);
+    } else {
+      zoom = pdfFitZoom(area, size, widthOnly: prefs.viewingFit == 'fitWidth');
+      center = area.center;
     }
+    viewer.value = viewer.makeMatrixInSafeRange(
+      viewer.calcMatrixFor(center, zoom: zoom, viewSize: size),
+    );
+  }
+
+  void _applyViewing() {
+    if (viewer.isReady) _fitViewport(viewer.viewSize);
   }
 
   Future<void> _fitting() async {
@@ -1127,8 +1184,7 @@ class _DocumentReaderState extends State<DocumentReader> {
         }
       }
 
-      return Column(
-        mainAxisSize: MainAxisSize.min,
+      return ReaderToolbarLayout(
         children: [
           ReaderMenuGrid(
             children: [
@@ -1149,8 +1205,31 @@ class _DocumentReaderState extends State<DocumentReader> {
                       }
                     : navigate,
               ),
-              if (!epub)
-                action('Go to page', Icons.auto_stories_outlined, navigate),
+              if (!epub || isWindowsDesktop)
+                action(
+                  'Go to page',
+                  Icons.auto_stories_outlined,
+                  isWindowsDesktop
+                      ? (epub
+                            ? () => epubReader.currentState?.goToPage()
+                            : _pageNumber)
+                      : navigate,
+                ),
+              if (isWindowsDesktop)
+                action('Save annotations', Icons.save_outlined, () async {
+                  final saved = await annotations.commit();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          saved
+                              ? 'Annotations saved.'
+                              : 'Could not save annotations. Please try again.',
+                        ),
+                      ),
+                    );
+                  }
+                }),
               action(
                 'Bookmark page',
                 bookmarked ? Icons.bookmark : Icons.bookmark_border,
@@ -1207,7 +1286,10 @@ class _DocumentReaderState extends State<DocumentReader> {
                 ),
             ],
           ),
-          const Divider(color: Color(0xff46515a), height: 24),
+          Divider(
+            color: const Color(0xff46515a),
+            height: isWindowsDesktop ? 1 : 24,
+          ),
           ReaderMenuGrid(
             children: [
               action('Contents', Icons.menu_book_outlined, () {
@@ -1275,6 +1357,36 @@ class _DocumentReaderState extends State<DocumentReader> {
                 () => _drawingOptions(epub),
               ),
               if (!epub) action('Shapes', Icons.category_outlined, _shapes),
+              if (isWindowsDesktop) ...[
+                for (final entry in {
+                  MarkTool.pen: (Icons.draw_outlined, 'Draw'),
+                  MarkTool.eraser: (Icons.auto_fix_normal, 'Eraser'),
+                  MarkTool.rectangle: (Icons.crop_square, 'Rectangle'),
+                  MarkTool.arrow: (Icons.north_east, 'Arrow'),
+                  if (!epub)
+                    MarkTool.callout: (Icons.chat_bubble_outline, 'Callout'),
+                }.entries)
+                  if (epub ||
+                      (entry.key != MarkTool.pen &&
+                          entry.key != MarkTool.eraser))
+                    action(
+                      entry.value.$2,
+                      entry.value.$1,
+                      ready
+                          ? () => setState(() {
+                              tool = entry.key;
+                              _annotationMode = true;
+                            })
+                          : null,
+                      selected: tool == entry.key,
+                    ),
+                action('Add text', Icons.text_fields, ready ? _addText : null),
+                action(
+                  'Add image',
+                  Icons.add_photo_alternate_outlined,
+                  ready ? _addImage : null,
+                ),
+              ],
               if (!epub)
                 action(
                   'Redact',
@@ -1314,7 +1426,7 @@ class _DocumentReaderState extends State<DocumentReader> {
               ),
             ],
           ),
-          if (!epub && tool != MarkTool.browse)
+          if (!isWindowsDesktop && !epub && tool != MarkTool.browse)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Row(
@@ -1334,7 +1446,10 @@ class _DocumentReaderState extends State<DocumentReader> {
                 ],
               ),
             ),
-          const Divider(color: Color(0xff46515a), height: 24),
+          Divider(
+            color: const Color(0xff46515a),
+            height: isWindowsDesktop ? 1 : 24,
+          ),
           ReaderEditMenu(
             book: widget.book,
             repository: widget.repository,
@@ -1366,6 +1481,8 @@ class _DocumentReaderState extends State<DocumentReader> {
       if (anchor.startsWith('page:')) anchor = 'chapter:1';
       return ReaderControlsOverlay(
         controls: _toolbar(true),
+        onTurn: (direction) async =>
+            epubReader.currentState?.turnSection(direction),
         child: Stack(
           children: [
             Positioned.fill(
@@ -1390,7 +1507,7 @@ class _DocumentReaderState extends State<DocumentReader> {
                     setState(() => anchor = 'chapter:${index + 1}'),
               ),
             ),
-            if (_annotationMode)
+            if (_annotationMode && !isWindowsDesktop)
               Positioned(
                 bottom: 12,
                 left: 12,
@@ -1410,43 +1527,106 @@ class _DocumentReaderState extends State<DocumentReader> {
       });
     }
     final params = PdfViewerParams(
+      onKey: (params, key, realKeyPress) {
+        if (!isWindowsDesktop ||
+            _display == 'Continuous' ||
+            widget.preferences.viewingFit == 'custom' ||
+            HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isAltPressed ||
+            HardwareKeyboard.instance.isShiftPressed) {
+          return null;
+        }
+        if (ReaderControlsScope.of(context)?.value == true) return false;
+        final settings = widget.preferences.globalDefaults.shortcuts;
+        final next = settings.binding(ReaderCommand.next);
+        final previous = settings.binding(ReaderCommand.previous);
+        final direction =
+            (key.keyId == next.keyId &&
+                    !next.control &&
+                    !next.alt &&
+                    !next.shift) ||
+                key == LogicalKeyboardKey.arrowRight
+            ? 1
+            : (key.keyId == previous.keyId &&
+                      !previous.control &&
+                      !previous.alt &&
+                      !previous.shift) ||
+                  key == LogicalKeyboardKey.arrowLeft
+            ? -1
+            : 0;
+        if (direction == 0) return null;
+        unawaited(_turnPage(direction));
+        return true;
+      },
+      viewerOverlayBuilder: isWindowsDesktop && _display == 'Continuous'
+          ? (context, size, selection) => [
+              PdfViewerScrollThumb(
+                controller: viewer,
+                thumbSize: const Size(12, 56),
+              ),
+            ]
+          : null,
+      scrollByMouseWheel: _desktopPagedWheel ? null : 0.2,
       backgroundColor: Theme.of(context).colorScheme.surface,
       margin: 0,
-      panEnabled: tool == MarkTool.browse && _display != 'Single page',
+      panEnabled: tool == MarkTool.browse,
+      panAxis:
+          _display == 'Single page' && widget.preferences.viewingFit != 'custom'
+          ? PanAxis.vertical
+          : PanAxis.free,
       scaleEnabled: tool == MarkTool.browse,
       layoutPages: _layout,
       onViewSizeChanged: (size, oldSize, controller) {
-        if (_display != 'Continuous' ||
-            widget.preferences.viewingFit == 'custom' ||
-            oldSize == null ||
-            oldSize.width == size.width ||
-            !controller.isReady) {
-          return;
+        if (size.isEmpty || !controller.isReady) return;
+        // Preserve the source page before changing horizontal slot widths.
+        final resizePage = isWindowsDesktop && _display == 'Single page'
+            ? (int.tryParse(anchor.split(':').last) ?? controller.pageNumber)
+            : null;
+        if (isWindowsDesktop && _desktopViewport != size) {
+          _desktopViewport = size;
+          if (_display == 'Single page') {
+            _desktopResizePage = resizePage;
+            controller.invalidate();
+          }
         }
-        final center = controller.value.calcPosition(oldSize);
+        final epoch = ++_viewportEpoch;
+        final center = oldSize == null || oldSize.isEmpty
+            ? null
+            : controller.value.calcPosition(oldSize);
+        final top = center == null || controller.currentZoom <= 0
+            ? null
+            : center.dy - oldSize!.height / (2 * controller.currentZoom);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted ||
+              epoch != _viewportEpoch ||
               !identical(controller, viewer) ||
-              !controller.isReady ||
-              _display != 'Continuous' ||
-              widget.preferences.viewingFit == 'custom') {
+              !viewer.isReady) {
             return;
           }
-          final width = controller.layout.documentSize.width;
-          if (width <= 0) return;
-          controller.value = controller.makeMatrixInSafeRange(
-            controller.calcMatrixFor(
-              center,
-              zoom: size.width / width,
-              viewSize: size,
-            ),
-          );
+          void refit() {
+            if (!mounted || epoch != _viewportEpoch || !viewer.isReady) return;
+            _fitViewport(
+              size,
+              previousCenter: center,
+              previousTop: top,
+              pageOverride: resizePage,
+            );
+            _desktopResizePage = null;
+          }
+
+          if (resizePage != null) {
+            // Wait for the viewer's layout-size delegate to finish repositioning.
+            WidgetsBinding.instance.addPostFrameCallback((_) => refit());
+            WidgetsBinding.instance.scheduleFrame();
+          } else {
+            refit();
+          }
         });
       },
       textSelectionParams: PdfTextSelectionParams(
         enabled: tool == MarkTool.browse || (_textTool && !_markImages),
         showContextMenuAutomatically: tool == MarkTool.browse,
-        enableSelectionHandles: tool == MarkTool.browse,
+        enableSelectionHandles: !isWindowsDesktop && tool == MarkTool.browse,
       ),
       buildContextMenu: _selectionMenu,
       linkHandlerParams: tool == MarkTool.browse
@@ -1485,6 +1665,12 @@ class _DocumentReaderState extends State<DocumentReader> {
         }
       },
       onPageChanged: (page) {
+        if (isWindowsDesktop &&
+            _display == 'Single page' &&
+            (_desktopResizePage != null ||
+                (viewer.isReady && viewer.viewSize != _desktopViewport))) {
+          return;
+        }
         if (page != null && mounted) {
           if (anchor != 'page:$page') setState(() => anchor = 'page:$page');
           if (viewer.isReady && viewer.pageCount > 0) {
@@ -1535,6 +1721,7 @@ class _DocumentReaderState extends State<DocumentReader> {
     );
     return ReaderControlsOverlay(
       controls: _toolbar(false),
+      onTurn: _turnPage,
       child: Stack(
         children: [
           Positioned.fill(
@@ -1542,9 +1729,15 @@ class _DocumentReaderState extends State<DocumentReader> {
               session: gestures,
               active: tool != MarkTool.browse,
               onNavigate: _twoFingerNavigate,
-              onSwipe: _display == 'Single page' ? _turnPage : null,
+              onSwipe:
+                  _display == 'Single page' &&
+                      widget.preferences.viewingFit != 'custom'
+                  ? _turnPage
+                  : null,
               child: PageTurn(
                 key: pageTurn,
+                onTurn: _turnPage,
+                wheelPaging: _desktopPagedWheel,
                 paper: widget.preferences.pageDark
                     ? const Color(0xff151515)
                     : Colors.white,
@@ -1559,25 +1752,43 @@ class _DocumentReaderState extends State<DocumentReader> {
               ),
             ),
           ),
-          Positioned(
-            top: 64,
-            right: 12,
-            child: PageNotesButton(store: annotations, anchor: anchor),
-          ),
-          if (_annotationMode)
+          if (isWindowsDesktop && _display != 'Continuous')
+            Positioned(
+              top: 0,
+              right: 0,
+              bottom: 64,
+              child: ListenableBuilder(
+                listenable: viewer,
+                builder: (_, _) => DesktopPageRail(
+                  current: (viewer.pageNumber ?? 1) - 1,
+                  count: viewer.isReady ? viewer.pageCount : 1,
+                  onPage: (index) => _goPage(index + 1),
+                ),
+              ),
+            ),
+          if (!isWindowsDesktop)
+            Positioned(
+              top: 64,
+              right: 20,
+              child: PageNotesButton(store: annotations, anchor: anchor),
+            ),
+          if (_annotationMode && !isWindowsDesktop)
             Positioned(
               bottom: 12,
               left: 12,
               right: 12,
               child: _annotationBar(false),
             ),
-          if (!_annotationMode)
+          if (!_annotationMode || isWindowsDesktop)
             Positioned.fill(
               child: ReaderBottomBar(
                 preferences: widget.preferences,
                 label: viewer.isReady
                     ? '${viewer.pageNumber ?? 1} / ${viewer.pageCount}'
                     : '',
+                onPageTap: isWindowsDesktop && viewer.isReady
+                    ? _pageNumber
+                    : null,
                 onPrevious: viewer.isReady && (viewer.pageNumber ?? 1) > 1
                     ? () => _turnPage(-1)
                     : null,

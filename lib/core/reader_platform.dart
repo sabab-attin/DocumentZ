@@ -5,8 +5,26 @@ class ReaderPlatform {
   static const channel = MethodChannel('documentz/appearance');
   static bool get isAndroid =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-  static Future<void> fullscreen(bool enabled) async {
+  static Future<void> landscape(bool enabled) async {
     if (!isAndroid) return;
+    await channel.invokeMethod<void>('landscape', {'enabled': enabled});
+  }
+
+  static Future<void> restoreOrientation() async {
+    try {
+      await landscape(false);
+    } on PlatformException {
+      // A disposed reader must not report an unhandled platform cleanup error.
+    } on MissingPluginException {
+      // Tests and older installed platform implementations.
+    }
+  }
+
+  static Future<void> fullscreen(bool enabled) async {
+    if (kIsWeb ||
+        (!isAndroid && defaultTargetPlatform != TargetPlatform.windows)) {
+      return;
+    }
     try {
       await channel.invokeMethod<void>('fullscreen', {'enabled': enabled});
     } on PlatformException {
@@ -15,9 +33,4 @@ class ReaderPlatform {
       /* Widget tests and older installed builds. */
     }
   }
-
-  static Future<String> currentIcon() async =>
-      await channel.invokeMethod<String>('getIcon') ?? 'classic';
-  static Future<void> changeIcon(String icon) =>
-      channel.invokeMethod<void>('setIcon', {'icon': icon});
 }

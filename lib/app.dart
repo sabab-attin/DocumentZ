@@ -1,3 +1,5 @@
+import 'core/desktop_platform.dart';
+import 'data/recent_documents.dart';
 import 'data/edit_output.dart';
 import 'data/automatic_device_changes.dart';
 import 'data/external_documents.dart';
@@ -123,7 +125,7 @@ class _ReaderShellState extends State<ReaderShell> {
           final messenger = ScaffoldMessenger.of(context);
           final opening = messenger.showSnackBar(
             const SnackBar(
-              content: Text('Opening document…'),
+              content: Text('Opening documentâ€¦'),
               duration: Duration(minutes: 5),
             ),
           );
@@ -134,7 +136,13 @@ class _ReaderShellState extends State<ReaderShell> {
               incoming['path'] as String,
             );
             if (!mounted) return;
-            setState(() => libraryRevision++);
+            await RecentDocuments.instance.record(book.id);
+            if (!mounted) return;
+            setState(() {
+              selected = 0;
+              visitedTabs.add(0);
+              libraryRevision++;
+            });
             unawaited(
               Navigator.of(context).push<void>(
                 MaterialPageRoute(
@@ -146,6 +154,18 @@ class _ReaderShellState extends State<ReaderShell> {
                 ),
               ),
             );
+          } catch (error) {
+            if (mounted) {
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    error is FormatException
+                        ? error.message.toString()
+                        : 'Could not open ${incoming['name']}. Check the file and access permissions.',
+                  ),
+                ),
+              );
+            }
           } finally {
             opening.close();
             await ExternalDocuments.finish(id);
@@ -216,12 +236,13 @@ class _ReaderShellState extends State<ReaderShell> {
         preferences: widget.preferences,
         recentOnly: true,
       ),
-      DeviceLibraryScreen(
-        revision: libraryRevision,
-        repository: repository,
-        preferences: widget.preferences,
-        onChanged: () => setState(() => libraryRevision++),
-      ),
+      if (!isWindowsDesktop)
+        DeviceLibraryScreen(
+          revision: libraryRevision,
+          repository: repository,
+          preferences: widget.preferences,
+          onChanged: () => setState(() => libraryRevision++),
+        ),
       EditScreen(
         repository: repository,
         onSaved: () => setState(() => libraryRevision++),
@@ -261,15 +282,16 @@ class _ReaderShellState extends State<ReaderShell> {
                   padding: EdgeInsets.symmetric(vertical: 24),
                   child: Icon(Icons.auto_stories_outlined, size: 32),
                 ),
-                destinations: const [
+                destinations: [
                   NavigationRailDestination(
                     icon: Icon(Icons.history),
                     label: Text('Recent'),
                   ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.folder_outlined),
-                    label: Text('Library'),
-                  ),
+                  if (!isWindowsDesktop)
+                    NavigationRailDestination(
+                      icon: Icon(Icons.folder_outlined),
+                      label: Text('Library'),
+                    ),
                   NavigationRailDestination(
                     icon: Icon(Icons.edit_outlined),
                     label: Text('Edit'),
@@ -299,15 +321,16 @@ class _ReaderShellState extends State<ReaderShell> {
           : NavigationBar(
               selectedIndex: selected,
               onDestinationSelected: _selectTab,
-              destinations: const [
+              destinations: [
                 NavigationDestination(
                   icon: Icon(Icons.history),
                   label: 'Recent',
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.folder_outlined),
-                  label: 'Library',
-                ),
+                if (!isWindowsDesktop)
+                  NavigationDestination(
+                    icon: Icon(Icons.folder_outlined),
+                    label: 'Library',
+                  ),
                 NavigationDestination(
                   icon: Icon(Icons.edit_outlined),
                   label: 'Edit',

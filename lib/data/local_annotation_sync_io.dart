@@ -11,6 +11,7 @@ import '../domain/services.dart';
 import 'local_sync_models.dart';
 import 'sync_crypto.dart';
 import 'sync_connection_io.dart';
+import 'android_lan_connection.dart';
 import 'nearby_sync_io.dart';
 import 'sync_graph.dart';
 import 'sync_repository.dart';
@@ -224,17 +225,7 @@ class LocalAnnotationSync extends ChangeNotifier {
         'Connect both devices to the same Wi-Fi or hotspot first.',
       );
     }
-    ServerSocket server;
-    try {
-      server = await ServerSocket.bind(
-        loopbackForTests
-            ? InternetAddress.loopbackIPv4
-            : InternetAddress.anyIPv4,
-        loopbackForTests ? 0 : 45831,
-      );
-    } on SocketException {
-      server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
-    }
+    final server = await bindSyncServer(loopback: loopbackForTests);
     if (_disposed || epoch != _epoch) {
       await server.close();
       return;
@@ -694,6 +685,9 @@ class LocalAnnotationSync extends ChangeNotifier {
       final connected = await connectSyncAddresses(
         alternatives ?? [address],
         localAddresses: addresses,
+        connector: Platform.isAndroid && !loopbackForTests
+            ? connectAndroidLan
+            : null,
         active: () => _enabled && !_disposed && epoch == _epoch,
         onAttempt: (attempt, total) {
           status = 'Connecting to local address $attempt of $total…';

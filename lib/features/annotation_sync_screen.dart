@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../core/desktop_platform.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -465,15 +467,19 @@ class _AnnotationSyncScreenState extends State<AnnotationSyncScreen> {
                         label: const Text('Rename device'),
                       ),
                     ),
-                    const Text(
-                      '1. Enable sync on both devices.\n'
-                      '2. Scan the other device’s QR.\n'
-                      '3. Approve matching numbers.',
+                    Text(
+                      isWindowsDesktop
+                          ? '1. Enable sync on both devices.\n2. On Android, scan this QR.\n3. Approve matching numbers.'
+                          : '1. Enable sync on both devices.\n'
+                                '2. Scan the other device’s QR.\n'
+                                '3. Approve matching numbers.',
                     ),
                     const SizedBox(height: 8),
                     Text(
                       sync.usesNearby
                           ? 'Keep Wi-Fi and Bluetooth on.'
+                          : isWindowsDesktop
+                          ? 'Use the same local network. On Android, choose Computer / local network. Use the Windows installer to set up local sync access.'
                           : 'Keep both apps on the same local network.',
                     ),
                     const SizedBox(height: 16),
@@ -501,13 +507,15 @@ class _AnnotationSyncScreenState extends State<AnnotationSyncScreen> {
                       Wrap(
                         spacing: 8,
                         children: [
-                          FilledButton.icon(
-                            onPressed: sync.busy || _scanning || _handlingInvite
-                                ? null
-                                : () => _scan(camera: true),
-                            icon: const Icon(Icons.qr_code_scanner),
-                            label: const Text('Scan QR code'),
-                          ),
+                          if (!isWindowsDesktop)
+                            FilledButton.icon(
+                              onPressed:
+                                  sync.busy || _scanning || _handlingInvite
+                                  ? null
+                                  : () => _scan(camera: true),
+                              icon: const Icon(Icons.qr_code_scanner),
+                              label: const Text('Scan QR code'),
+                            ),
                           TextButton.icon(
                             onPressed: sync.busy || _scanning || _handlingInvite
                                 ? null

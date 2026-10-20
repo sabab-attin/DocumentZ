@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import '../core/desktop_platform.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -19,8 +21,28 @@ class BookPageController extends ChangeNotifier {
       return false;
     }
     page = next;
-    _layout();
+    _positionChanged();
     return true;
+  }
+
+  void jumpToPage(int index) {
+    _pendingReveal = null;
+    _restore = null;
+    page = index.clamp(0, math.max(0, count - 1));
+    if (columns == 2) page -= page % 2;
+    _positionChanged();
+  }
+
+  void _positionChanged() {
+    for (final view in _views) {
+      if (!ready || view._dirtyBreaks || view._measurementScheduled) {
+        view.markNeedsLayout();
+      } else {
+        view._publishPage();
+        view.markNeedsPaint();
+        view.markNeedsSemanticsUpdate();
+      }
+    }
   }
 
   void _layout() {
@@ -94,7 +116,7 @@ class BookPageController extends ChangeNotifier {
     if (columns == 2) {
       page -= page % 2;
     }
-    _layout();
+    _positionChanged();
   }
 
   void _changed() {
@@ -122,10 +144,12 @@ class BookPageController extends ChangeNotifier {
 /// Reserve the header/menu and footer even when controls auto-hide. Layout uses
 /// actual available height, including changes to system bars and split screen.
 EdgeInsets ebookPageInsets(Size viewport, int columns, EdgeInsets safe) {
-  final top = math.min(
-    88.0 + safe.top,
-    math.max(64.0 + safe.top, viewport.height * .16),
-  );
+  final top = isWindowsDesktop
+      ? 16.0
+      : math.min(
+          88.0 + safe.top,
+          math.max(64.0 + safe.top, viewport.height * .16),
+        );
   final bottom = math.min(
     64.0 + safe.bottom,
     math.max(40.0 + safe.bottom, viewport.height * .10),
@@ -241,12 +265,51 @@ class RenderBookAtomic extends RenderProxyBox {
   }
 }
 
+class BookVisibility extends SingleChildRenderObjectWidget {
+  const BookVisibility({super.key, required super.child});
+  @override
+  RenderBookVisibility createRenderObject(BuildContext context) =>
+      RenderBookVisibility();
+}
+
+class RenderBookVisibility extends RenderProxyBox {
+  bool _visible = true;
+  bool get visible => _visible;
+  void setVisible(bool value) {
+    if (_visible == value) return;
+    _visible = value;
+    markNeedsPaint();
+    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (_visible) super.paint(context, offset);
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
+      _visible && super.hitTest(result, position: position);
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    if (_visible) super.visitChildrenForSemantics(visitor);
+  }
+}
+
 class RenderBookLeaf extends RenderProxyBox {
   RenderBookLeaf(this.controller, this.column, this.columns, this.layoutToken);
   BookPageController controller;
   int column, columns;
   Object layoutToken;
   List<double> starts = [0];
+  final _paragraphs = <({RenderBookVisibility view, Rect bounds})>[];
+  void _showVisibleParagraphs() {
+    final visible = visiblePageRect.shift(-_offset).inflate(1);
+    for (final entry in _paragraphs) {
+      entry.view.setVisible(_visible && visible.overlaps(entry.bounds));
+    }
+  }
+
   Size? _previousSize;
   double _contentHeight = -1, _paginationHeight = -1;
   bool _dirtyBreaks = true, _notifyScheduled = false;
@@ -275,6 +338,9 @@ class RenderBookLeaf extends RenderProxyBox {
     layoutToken = token;
     markNeedsLayout();
   }
+
+  @override
+  bool get isRepaintBoundary => true;
 
   int pageForOffset(double y) {
     for (var i = starts.length - 1; i >= 0; i--) {
@@ -325,7 +391,17 @@ class RenderBookLeaf extends RenderProxyBox {
     var height = child!.size.height;
     final oldY = starts[math.min(controller.page, starts.length - 1)];
     final intervals = <Rect>[];
+    _paragraphs.clear();
     void inspect(RenderObject object) {
+      if (object is RenderBookVisibility) {
+        _paragraphs.add((
+          view: object,
+          bounds: MatrixUtils.transformRect(
+            object.getTransformTo(child),
+            Offset.zero & object.size,
+          ),
+        ));
+      }
       if (object is RenderEditable || object is RenderParagraph) {
         final span = object is RenderEditable
             ? object.text
@@ -377,17 +453,29 @@ class RenderBookLeaf extends RenderProxyBox {
     }
 
     intervals.sort((a, b) => a.top.compareTo(b.top));
+    final maxBottom = <double>[];
+    var bottom = 0.0;
+    for (final rect in intervals) {
+      bottom = math.max(bottom, rect.bottom);
+      maxBottom.add(bottom);
+    }
     final next = <double>[0];
     var start = 0.0;
     while (start + size.height < height - .5) {
       var cut = start + size.height;
-      for (final rect in intervals.reversed) {
-        if (rect.top >= cut) {
-          continue;
+      var low = 0, high = intervals.length;
+      while (low < high) {
+        final mid = (low + high) ~/ 2;
+        if (intervals[mid].top < cut) {
+          low = mid + 1;
+        } else {
+          high = mid;
         }
-        if (rect.top > start + .5 && rect.bottom > cut + .01) {
-          cut = rect.top;
-        }
+      }
+      for (var i = low - 1; i >= 0; i--) {
+        if (maxBottom[i] <= cut + .01) break;
+        final rect = intervals[i];
+        if (rect.top > start + .5 && rect.bottom > cut + .01) cut = rect.top;
       }
       next.add(cut);
       start = cut;
@@ -405,6 +493,7 @@ class RenderBookLeaf extends RenderProxyBox {
 
   void _publishPage() {
     if (column != 0) {
+      _showVisibleParagraphs();
       return;
     }
     if (controller._restore != null) {
@@ -421,6 +510,7 @@ class RenderBookLeaf extends RenderProxyBox {
     controller.count = starts.length;
     controller.columns = columns;
     controller.ready = true;
+    _showVisibleParagraphs();
     final fraction = starts.length <= 1
         ? 0.0
         : (starts[controller.page] /
@@ -491,5 +581,95 @@ class RenderBookLeaf extends RenderProxyBox {
   void detach() {
     controller._views.remove(this);
     super.detach();
+  }
+}
+
+/// Continuous reading keeps source geometry for links/search while omitting
+/// off-screen paragraph layers from painting and text interaction.
+class BookFlowViewport extends SingleChildRenderObjectWidget {
+  const BookFlowViewport({
+    super.key,
+    required this.controller,
+    required super.child,
+  });
+  final ScrollController controller;
+  @override
+  RenderBookFlowViewport createRenderObject(BuildContext context) =>
+      RenderBookFlowViewport(controller);
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderBookFlowViewport renderObject,
+  ) => renderObject.controller = controller;
+}
+
+class RenderBookFlowViewport extends RenderProxyBox {
+  RenderBookFlowViewport(this._controller);
+  ScrollController _controller;
+  final _paragraphs = <({RenderBookVisibility view, Rect bounds})>[];
+  bool _measuring = false;
+  set controller(ScrollController value) {
+    if (_controller == value) return;
+    if (attached) _controller.removeListener(_refresh);
+    _controller = value;
+    if (attached) _controller.addListener(_refresh);
+    markNeedsLayout();
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _controller.addListener(_refresh);
+  }
+
+  @override
+  void detach() {
+    _controller.removeListener(_refresh);
+    super.detach();
+  }
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    if (_measuring) return;
+    _measuring = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measuring = false;
+      if (!attached || child == null) return;
+      _paragraphs.clear();
+      void inspect(RenderObject object) {
+        if (object is RenderBookVisibility) {
+          _paragraphs.add((
+            view: object,
+            bounds: MatrixUtils.transformRect(
+              object.getTransformTo(this),
+              Offset.zero & object.size,
+            ),
+          ));
+        } else {
+          object.visitChildren(inspect);
+        }
+      }
+
+      inspect(child!);
+      _refresh();
+    });
+  }
+
+  void _refresh() {
+    if (!attached ||
+        !_controller.hasClients ||
+        !_controller.position.hasContentDimensions) {
+      return;
+    }
+    final visible = Rect.fromLTWH(
+      0,
+      _controller.offset,
+      size.width,
+      _controller.position.viewportDimension,
+    ).inflate(1);
+    for (final entry in _paragraphs) {
+      entry.view.setVisible(visible.overlaps(entry.bounds));
+    }
   }
 }

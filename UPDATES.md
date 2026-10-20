@@ -6,11 +6,11 @@ Tap an update notification to start a download. The download continues through A
 
 To publish a compatible update:
 
-1. Increase both the semantic version and build number. This package prepares **1.0.4+8**; the next release must use a higher version and build number.
+1. Increase both the semantic version and build number. This release is **1.0.6+12**; the next release must use a higher version and build number.
 2. Use the same app ID and signing identity as existing installations.
 3. Build and validate all three ABI APKs.
 4. Publish a stable GitHub release, tagged `vMAJOR.MINOR.PATCH`, and mark it latest. Drafts and prereleases are ignored.
-5. Upload `app-arm64-v8a-release.apk`, `app-armeabi-v7a-release.apk`, `app-x86_64-release.apk` and `SHA256SUMS.txt`. The updater chooses the supported architecture and requires GitHub's SHA-256 asset digest to be available.
+5. Upload `app-arm64-v8a-release.apk`, `app-armeabi-v7a-release.apk`, `app-x86_64-release.apk`, `DocumentZ-1.0.6-windows-x64-setup.exe` and the combined `SHA256SUMS.txt`. The updater chooses the supported architecture and requires GitHub's SHA-256 asset digest to be available.
 
 Release checks send no document content, library lists or pairing identities. They do make ordinary HTTPS requests to GitHub; GitHub sees normal connection information such as the requesting IP address. Downloading uses the current connection and may use mobile data; roaming downloads are disabled.
 
@@ -25,3 +25,9 @@ The first complete scan can still take time on a large device. It does not block
 When the app is closed, Android content-triggered jobs and a persisted periodic job keep a separate metadata change journal. The app also catches up automatically on resume. Deltas are merged into the saved index and acknowledged only after they are saved. Failed writes are retried with backoff, and a scan completing late cannot overwrite a newer download or deletion. Jobs are restored after reboot/update. Android can defer jobs during Doze, battery restrictions or force-stop; foreground discovery catches up when the app is opened. This is automatic file discovery, not a promise of instantaneous delivery while Android blocks background execution.
 
 Manual Refresh remains a recovery option, not a requirement for finding new files. Permission or connected-folder changes invalidate the saved scope. Renaming and deleting inside DocumentZ update the cached entries directly. The index contains metadata only; deleting it cannot delete source documents or annotations.
+
+# Validation
+
+The Android sources compile against the actual SDK and dependencies. The standalone update-policy checks pass for version ordering, rejecting prereleases/downgrades, architecture selection and rejecting unexpected download URLs. The automatic-discovery format checks pass for readable documents and excluding media, installers and unfinished extensions. New Flutter tests cover index reuse across restarts with 50,000 entries, scan coalescing, permission changes, cache mutations, automatic delta merging, repeated journal delivery, changes arriving during initial scans, acknowledgement ordering, failed-write retention, duplicate document opening, malformed imports and the update controls.
+
+For 1.0.6+12, Dart analysis passed with no issues and all 318 Flutter tests passed. Android release APKs and the Windows installer were built successfully. Real-device chooser resolution, notification delivery, downloading, installation and cross-device pairing still require device checks.

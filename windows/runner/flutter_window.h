@@ -5,6 +5,9 @@
 #include <flutter/flutter_view_controller.h>
 
 #include <memory>
+#include <deque>
+#include <flutter/method_channel.h>
+#include <flutter/encodable_value.h>
 
 #include "win32_window.h"
 
@@ -23,6 +26,16 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  bool QueueCommandLine(const wchar_t* command_line);
+  void SetFullscreen(bool enabled);
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> documents_channel_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> appearance_channel_;
+  std::deque<flutter::EncodableMap> pending_documents_;
+  int64_t next_document_id_ = 0;
+  bool fullscreen_ = false;
+  LONG_PTR normal_style_ = 0;
+  WINDOWPLACEMENT normal_placement_{};
+
   // The project to run.
   flutter::DartProject project_;
 

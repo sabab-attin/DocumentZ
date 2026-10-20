@@ -827,7 +827,6 @@ class _EditScreenState extends State<EditScreen> {
             'Encrypt': Icons.lock_outline,
           }),
           _group('Create', const {
-            'Create PDF': Icons.note_add_outlined,
             'Scan': Icons.document_scanner_outlined,
             'OCR': Icons.text_fields,
           }),

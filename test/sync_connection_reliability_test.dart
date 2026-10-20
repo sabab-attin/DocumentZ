@@ -68,6 +68,33 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test(
+    'listener collisions stay inside the installer firewall range',
+    () async {
+      final attempted = <int>[];
+      final server = await bindSyncServer(
+        binder: (address, port) async {
+          attempted.add(port);
+          if (port < 45833) throw const SocketException('Already in use');
+          return ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        },
+      );
+      await server.close();
+      expect(attempted, [45831, 45832, 45833]);
+      attempted.clear();
+      await expectLater(
+        bindSyncServer(
+          binder: (address, port) async {
+            attempted.add(port);
+            throw const SocketException('Already in use');
+          },
+        ),
+        throwsA(isA<SocketException>()),
+      );
+      expect(attempted, List.generate(9, (i) => 45831 + i));
+    },
+  );
+
   test('a refused address falls back to the next address and remembers the actual endpoint', () async {
     final closed = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final refused = '127.0.0.1:${closed.port}';
@@ -147,7 +174,8 @@ void main() {
             id: '$device-${tool.name}',
             anchor: 'page:1',
             tool: tool,
-            text: '**Markdown note**\nمرحبا — বাংলা — Milena',
+            text:
+                '**Markdown note**\nÙ…Ø±Ø­Ø¨Ø§ â€” à¦¬à¦¾à¦‚à¦²à¦¾ â€” Milena',
             locked: true,
             points: const [Offset(0.1, 0.2), Offset(0.3, 0.4)],
             rects: const [Rect.fromLTWH(0.1, 0.2, 0.3, 0.4)],

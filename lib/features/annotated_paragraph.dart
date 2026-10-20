@@ -1,3 +1,4 @@
+import '../core/desktop_platform.dart';
 import 'ebook_box_layout.dart';
 
 import 'dart:typed_data';
@@ -260,6 +261,41 @@ class AnnotatedParagraph extends StatefulWidget {
 
 class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
   late List<ParagraphRun> runs;
+  final _selectionPreview = ValueNotifier(
+    const TextSelection.collapsed(offset: -1),
+  );
+  TextPainter? _cachedPainter;
+  Object? _cachedLayout;
+  void _updateSelection(TextSelection value) {
+    selection = value;
+    if (isWindowsDesktop) {
+      _selectionPreview.value = value;
+    } else {
+      setState(() {});
+    }
+  }
+
+  TextPainter _layoutText(
+    TextSpan spans,
+    TextAlign align,
+    TextDirection direction,
+    TextScaler scaler,
+    double width,
+  ) {
+    final signature = (spans, align, direction, scaler, width);
+    if (_cachedLayout != signature) {
+      _cachedPainter?.dispose();
+      _cachedLayout = signature;
+      _cachedPainter = TextPainter(
+        text: spans,
+        textAlign: align,
+        textDirection: direction,
+        textScaler: scaler,
+      )..layout(maxWidth: width);
+    }
+    return _cachedPainter!;
+  }
+
   String? _revealedQuery;
   int? _revealedOffset;
   final Map<String, TapGestureRecognizer> links = {};
@@ -294,6 +330,8 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
 
   @override
   void dispose() {
+    _selectionPreview.dispose();
+    _cachedPainter?.dispose();
     for (final link in links.values) {
       link.dispose();
     }
@@ -439,12 +477,20 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                     paintAnnotations: false,
                   ),
                 );
-                final painter = TextPainter(
-                  text: spans,
-                  textAlign: textAlign,
-                  textDirection: direction,
-                  textScaler: MediaQuery.textScalerOf(context),
-                )..layout(maxWidth: constraints.maxWidth);
+                final painter = isWindowsDesktop
+                    ? _layoutText(
+                        spans,
+                        textAlign,
+                        direction,
+                        MediaQuery.textScalerOf(context),
+                        constraints.maxWidth,
+                      )
+                    : (TextPainter(
+                        text: spans,
+                        textAlign: textAlign,
+                        textDirection: direction,
+                        textScaler: MediaQuery.textScalerOf(context),
+                      )..layout(maxWidth: constraints.maxWidth));
                 final searchOffset = widget.searchOffset;
                 if (searchOffset == null) {
                   _revealedQuery = null;
@@ -520,36 +566,39 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                         ),
                       ),
                     ),
-                    IgnorePointer(
-                      ignoring: active,
-                      child: SelectableText.rich(
-                        TextSpan(
-                          children: markedParagraphSpans(
-                            displayRuns,
-                            displayMarks,
-                            recognizers: links,
-                            noteRecognizers: noteLinks,
-                            paintAnnotations: false,
-                          ),
-                        ),
-                        style: style,
-                        textAlign: textAlign,
-                        textDirection: direction,
-                        onSelectionChanged: (value, cause) {
-                          selection = sourceSelection(value);
-                          widget.onSelection(annotate);
-                        },
-                        contextMenuBuilder: (context, editable) =>
-                            SelectionPanel(
-                              readText: () async => editable
-                                  .textEditingValue
-                                  .selection
-                                  .textInside(editable.textEditingValue.text),
-                              onClose: () => closeReaderTextSelection(editable),
-                              onAnnotate: widget.onAnnotate,
-                              onMark: (kind, color) =>
-                                  annotate(kind, color: color),
+                    _DesktopSelectionBoundary(
+                      child: IgnorePointer(
+                        ignoring: active,
+                        child: SelectableText.rich(
+                          TextSpan(
+                            children: markedParagraphSpans(
+                              displayRuns,
+                              displayMarks,
+                              recognizers: links,
+                              noteRecognizers: noteLinks,
+                              paintAnnotations: false,
                             ),
+                          ),
+                          style: style,
+                          textAlign: textAlign,
+                          textDirection: direction,
+                          onSelectionChanged: (value, cause) {
+                            selection = sourceSelection(value);
+                            widget.onSelection(annotate);
+                          },
+                          contextMenuBuilder: (context, editable) =>
+                              SelectionPanel(
+                                readText: () async => editable
+                                    .textEditingValue
+                                    .selection
+                                    .textInside(editable.textEditingValue.text),
+                                onClose: () =>
+                                    closeReaderTextSelection(editable),
+                                onAnnotate: widget.onAnnotate,
+                                onMark: (kind, color) =>
+                                    annotate(kind, color: color),
+                              ),
+                        ),
                       ),
                     ),
                     Positioned.fill(
@@ -568,35 +617,59 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                       Positioned.fill(
                         child: ImmediateMarkSurface(
                           session: widget.gestureSession,
-                          onStart: (p) => setState(
-                            () => selection = TextSelection.collapsed(
-                              offset: position(p),
-                            ),
+                          onStart: (p) => _updateSelection(
+                            TextSelection.collapsed(offset: position(p)),
                           ),
-                          onUpdate: (p) => setState(
-                            () => selection = TextSelection(
+                          onUpdate: (p) => _updateSelection(
+                            TextSelection(
                               baseOffset: selection.baseOffset,
                               extentOffset: position(p),
                             ),
                           ),
-                          onCancel: () => setState(
-                            () => selection = const TextSelection.collapsed(
-                              offset: -1,
-                            ),
+                          onCancel: () => _updateSelection(
+                            const TextSelection.collapsed(offset: -1),
                           ),
                           onEnd: () async {
                             await annotate(widget.activeTool);
                             if (mounted) {
-                              setState(
-                                () => selection = const TextSelection.collapsed(
-                                  offset: -1,
-                                ),
+                              _updateSelection(
+                                const TextSelection.collapsed(offset: -1),
                               );
                             }
                           },
                         ),
                       ),
-                    if (active && selection.isValid && !selection.isCollapsed)
+                    if (active && isWindowsDesktop)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: ValueListenableBuilder<TextSelection>(
+                            valueListenable: _selectionPreview,
+                            builder: (context, value, _) =>
+                                !value.isValid || value.isCollapsed
+                                ? const SizedBox.shrink()
+                                : CustomPaint(
+                                    painter: _SelectionPreview(
+                                      painter
+                                          .getBoxesForSelection(
+                                            TextSelection(
+                                              baseOffset:
+                                                  value.baseOffset + prefix,
+                                              extentOffset:
+                                                  value.extentOffset + prefix,
+                                            ),
+                                          )
+                                          .map((box) => box.toRect())
+                                          .toList(),
+                                      Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    if (active &&
+                        !isWindowsDesktop &&
+                        selection.isValid &&
+                        !selection.isCollapsed)
                       Positioned.fill(
                         child: IgnorePointer(
                           child: CustomPaint(
@@ -665,14 +738,19 @@ class _AnnotatedParagraphState extends State<AnnotatedParagraph> {
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.topCenter,
-                  child: SizedBox(width: natural, child: content),
+                  child: SizedBox(
+                    width: natural,
+                    child: isWindowsDesktop
+                        ? RepaintBoundary(child: content)
+                        : content,
+                  ),
                 ),
               ),
             );
           }
           return ConstrainedBox(
             constraints: BoxConstraints(maxWidth: width),
-            child: content,
+            child: isWindowsDesktop ? RepaintBoundary(child: content) : content,
           );
         },
       );
@@ -745,4 +823,12 @@ class ParagraphMarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ParagraphMarkPainter old) => true;
+}
+
+class _DesktopSelectionBoundary extends StatelessWidget {
+  const _DesktopSelectionBoundary({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) =>
+      isWindowsDesktop ? RepaintBoundary(child: child) : child;
 }

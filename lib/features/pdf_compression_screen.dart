@@ -87,6 +87,13 @@ class _PdfCompressionScreenState extends State<PdfCompressionScreen> {
       });
     } on PdfCompressionCancelled {
       // Navigating away discards unfinished work.
+    } on FormatException catch (failure) {
+      if (mounted && token == generation) {
+        setState(() {
+          loading = false;
+          error = failure.message;
+        });
+      }
     } catch (_) {
       if (mounted && token == generation) {
         setState(() {
@@ -117,7 +124,7 @@ class _PdfCompressionScreenState extends State<PdfCompressionScreen> {
           },
           message:
               '${compressionFileSize(widget.bytes.length)} → ${compressionFileSize(choice.size)}'
-              '${choice.imageOnly ? ' · Image copy: text, forms and links are flattened.' : ''}',
+              ' · Text and links preserved.',
         ),
       ),
     );
@@ -178,15 +185,14 @@ class _PdfCompressionScreenState extends State<PdfCompressionScreen> {
                   ),
                 if (selected == null)
                   const Text(
-                    'This PDF is already smaller than these image copies.',
+                    'No further reduction found while preserving this document. The original is unchanged.',
                   ),
-                if (selected?.imageOnly == true)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Image copy · Text, forms and links become flat.',
-                    ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'Text, links and forms stay usable. Smaller settings reduce embedded image quality.',
                   ),
+                ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: selected == null ? null : _preview,

@@ -76,3 +76,6 @@ app.*.map.json
 /*.ps1
 /h -u origin main
 /ource release*
+
+# Packaged desktop releases
+/releases/

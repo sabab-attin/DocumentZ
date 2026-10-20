@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- Current target SDK 36 uses INTERNET for legacy LAN access. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
@@ -24,7 +25,8 @@
         android:dataExtractionRules="@xml/sync_data_extraction_rules"
         android:label="DocumentZ"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher">
         <activity
             android:name="com.example.documentz.MainActivity"
             android:exported="true"
@@ -202,6 +204,7 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Keep legacy component names so upgrades and pinned shortcuts resolve to the new logo. -->
         <activity-alias android:name="com.example.documentz.LauncherClassic"
             android:targetActivity="com.example.documentz.MainActivity" android:exported="true"
             android:enabled="true" android:label="DocumentZ"
@@ -214,7 +217,7 @@
         <activity-alias android:name="com.example.documentz.LauncherKawaii"
             android:targetActivity="com.example.documentz.MainActivity" android:exported="true"
             android:enabled="false" android:label="DocumentZ"
-            android:icon="@mipmap/ic_launcher_kawaii">
+            android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -223,7 +226,7 @@
         <activity-alias android:name="com.example.documentz.LauncherMedieval"
             android:targetActivity="com.example.documentz.MainActivity" android:exported="true"
             android:enabled="false" android:label="DocumentZ"
-            android:icon="@mipmap/ic_launcher_medieval">
+            android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

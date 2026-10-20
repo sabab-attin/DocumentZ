@@ -1,4 +1,6 @@
+import '../core/desktop_platform.dart';
 import 'app_updates.dart';
+import 'keyboard_shortcuts_settings.dart';
 import '../domain/services.dart';
 import '../data/local_annotation_sync.dart';
 import 'annotation_sync_screen.dart';
@@ -7,7 +9,6 @@ import 'package:flutter/material.dart';
 
 import '../core/preferences.dart';
 import '../core/themes.dart';
-import 'app_icon_settings.dart';
 import 'reading_typography.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -88,7 +89,6 @@ class SettingsScreen extends StatelessWidget {
             preferences: preferences,
             showText: showTextOptions,
           ),
-          if (!preferences.documentSpecific) const AppIconSettings(),
           if (!preferences.documentSpecific &&
               localSyncAvailable &&
               repository is ImportableLibrary)
@@ -107,7 +107,12 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-          if (!preferences.documentSpecific) const AppUpdatesSettings(),
+          if (!preferences.documentSpecific && !isWindowsDesktop)
+            const AppUpdatesSettings(),
+          if (isWindowsDesktop)
+            KeyboardShortcutsSettings(
+              shortcuts: preferences.globalDefaults.shortcuts,
+            ),
           if (preferences.saveFailed)
             const Text(
               'Preferences work for this session, but could not be saved on this device.',

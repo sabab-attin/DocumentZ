@@ -1,4 +1,5 @@
 import '../data/word_lookup.dart';
+import '../core/reader_shortcuts.dart';
 
 import 'dart:math' show min, max;
 
@@ -317,7 +318,7 @@ class _SelectionPanelState extends State<SelectionPanel> {
                         ),
                         Text(
                           busy
-                              ? 'Marking…'
+                              ? 'MarkingÃ¢â‚¬Â¦'
                               : 'Tap a color to ${toolLabel.toLowerCase()}',
                           style: const TextStyle(
                             color: readerPanelInk,
@@ -442,40 +443,53 @@ class ReaderMenuAction extends StatelessWidget {
   final VoidCallback? onTap;
   final bool selected;
   @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xff334654) : null,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ReaderToolIcon(
-              icon,
-              size: 28,
-              color: onTap == null ? Colors.grey : readerPanelInk,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.2,
+  Widget build(BuildContext context) {
+    final desktop = DesktopActionsScope.of(context);
+    if (desktop != null) {
+      desktop[label] = onTap;
+      return IconButton(
+        tooltip: label,
+        onPressed: onTap,
+        isSelected: selected,
+        color: selected ? Theme.of(context).colorScheme.primary : null,
+        icon: ReaderToolIcon(icon, size: 22),
+      );
+    }
+    return Semantics(
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xff334654) : null,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ReaderToolIcon(
+                icon,
+                size: 28,
                 color: onTap == null ? Colors.grey : readerPanelInk,
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.2,
+                  color: onTap == null ? Colors.grey : readerPanelInk,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class ReaderMenuGrid extends StatelessWidget {
@@ -484,6 +498,12 @@ class ReaderMenuGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      if (DesktopActionsScope.of(context) != null) {
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(spacing: 2, children: children),
+        );
+      }
       final scale = MediaQuery.textScalerOf(context).scale(12) / 12;
       return GridView.count(
         crossAxisCount: constraints.maxWidth < 300 || scale > 1.5 ? 3 : 4,
@@ -496,4 +516,28 @@ class ReaderMenuGrid extends StatelessWidget {
       );
     },
   );
+}
+
+class ReaderToolbarLayout extends StatelessWidget {
+  const ReaderToolbarLayout({super.key, required this.children});
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) {
+    if (DesktopActionsScope.of(context) == null) {
+      return Column(mainAxisSize: MainAxisSize.min, children: children);
+    }
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 2,
+      children: [
+        for (final child in children)
+          if (child is ReaderMenuGrid)
+            ...child.children
+          else if (child is Divider)
+            const SizedBox(height: 28, child: VerticalDivider(width: 10))
+          else
+            child,
+      ],
+    );
+  }
 }

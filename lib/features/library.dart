@@ -1,3 +1,5 @@
+import '../core/desktop_platform.dart';
+import '../data/external_document_import.dart';
 import '../data/document_file_info.dart';
 import 'document_shelf.dart';
 import 'shelf_preferences.dart';
@@ -31,6 +33,7 @@ class LibraryScreen extends StatefulWidget {
     required this.repository,
     required this.preferences,
     this.picker = pickDocument,
+    this.multiplePicker = pickDocuments,
     this.coverLoader = loadDocumentCover,
     this.recentOnly = false,
   });
@@ -38,6 +41,7 @@ class LibraryScreen extends StatefulWidget {
   final LibraryRepository repository;
   final ReaderPreferences preferences;
   final DocumentPicker picker;
+  final Future<List<PickedDocument>> Function() multiplePicker;
   final Future<Uint8List?> Function(Book, ImportableLibrary) coverLoader;
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -134,22 +138,63 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (repository is! ImportableLibrary || importing) return;
     setState(() => importing = true);
     try {
-      final selection = await widget.picker();
-      if (selection == null) return;
-      final book = await repository.importDocument(
-        selection.name,
-        selection.openStream(),
-      );
-      await RecentDocuments.instance.record(book.id);
-      if (!mounted) return;
-      setState(() {
-        searchController.clear();
-        query = '';
-        books = _loadBooks();
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added ${book.title} to your library.')),
-      );
+      final List<PickedDocument> selections;
+      if (isWindowsDesktop) {
+        selections = await widget.multiplePicker();
+      } else {
+        final selection = await widget.picker();
+        selections = selection == null ? [] : [selection];
+      }
+      if (selections.isEmpty) return;
+      for (final selection in selections) {
+        try {
+          final book = isWindowsDesktop && selection.localPath != null
+              ? await importExternalDocument(
+                  repository,
+                  selection.name,
+                  selection.localPath!,
+                )
+              : await repository.importDocument(
+                  selection.name,
+                  selection.openStream(),
+                );
+          await RecentDocuments.instance.record(book.id);
+          if (!mounted) return;
+          setState(() {
+            searchController.clear();
+            query = '';
+            books = _loadBooks();
+          });
+          if (isWindowsDesktop) {
+            unawaited(
+              Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => ReaderScreen(
+                    book: book,
+                    preferences: widget.preferences,
+                    repository: repository,
+                  ),
+                ),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Added ${book.title} to your library.')),
+            );
+          }
+        } catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                error is FormatException
+                    ? error.message.toString()
+                    : 'Could not open ${selection.name}. Check the file and try again.',
+              ),
+            ),
+          );
+        }
+      }
     } catch (error) {
       if (!mounted) return;
       final message = error is FormatException
@@ -204,7 +249,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 )
                               : const Icon(Icons.add),
                           label: Text(
-                            importing ? 'Adding document…' : 'Add document',
+                            importing
+                                ? 'Adding documentâ€¦'
+                                : (isWindowsDesktop
+                                      ? 'Open document'
+                                      : 'Add document'),
                           ),
                         ),
                       ],
